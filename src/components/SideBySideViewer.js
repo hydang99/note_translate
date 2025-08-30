@@ -1,0 +1,948 @@
+import React, { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { ChevronLeft, ChevronRight, BookOpen, Globe, Save } from 'lucide-react';
+import { vocabularyAPI } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
+import LoginPrompt from './LoginPrompt';
+import toast from 'react-hot-toast';
+
+export default function SideBySideViewer({
+  originalContent,
+  translatedContent,
+  noteId, 
+  sourceLanguage, 
+  targetLanguage,
+  onPageChange,
+  vocabularyNavigation,
+  showVocabulary = false,
+  isEditingOriginal = false,
+  editedOriginalContent = '',
+  onEditedContentChange,
+  onSaveEditedOriginal,
+  onCancelEdit,
+  onReTranslate,
+  isSavingEdit = false,
+  isTranslatingEdit = false
+}) {
+  const [selectedText, setSelectedText] = useState('');
+  const [contextSentence, setContextSentence] = useState('');
+  const [showVocabPopup, setShowVocabPopup] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isSaving, setIsSaving] = useState(false);
+  const [wordDefinition, setWordDefinition] = useState(null);
+  const [isLoadingDefinition, setIsLoadingDefinition] = useState(false);
+  const [savedWords, setSavedWords] = useState([]); // Store multiple saved words
+  const [currentWordDefinition, setCurrentWordDefinition] = useState(null); // Current word being viewed
+  const [highlightedWords, setHighlightedWords] = useState(new Set()); // Track highlighted words
+  const [allSelectedWords, setAllSelectedWords] = useState([]); // Store all selected words with their definitions
+  const [isScrolling, setIsScrolling] = useState(false);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  
+  const leftPaneRef = useRef(null);
+  const rightPaneRef = useRef(null);
+  const { currentUser } = useAuth();
+
+  // Helper functions for editing
+  const getCleanTextForEditing = (content) => {
+    if (!content) return '';
+    
+    try {
+      // Try to parse as JSON (page-based format)
+      const parsed = JSON.parse(content);
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.content) {
+          // Single page format: {"page_number": 1, "content": "..."}
+          return parsed.content.replace(/\\n/g, '\n');
+        } else if (Array.isArray(parsed)) {
+          // Multiple pages format: [{"page_number": 1, "content": "..."}, ...]
+          return parsed.map(page => page.content || '').join('\n\n--- Page Break ---\n\n').replace(/\\n/g, '\n');
+        }
+      }
+    } catch (e) {
+      // Not JSON, return as is but clean up escape characters
+      return content.replace(/\\n/g, '\n');
+    }
+    
+    return content.replace(/\\n/g, '\n');
+  };
+
+  const convertCleanTextToOriginal = (cleanText) => {
+    if (!cleanText) return '';
+    
+    // Check if the original content was JSON format
+    try {
+      const originalParsed = JSON.parse(originalContent);
+      if (originalParsed && typeof originalParsed === 'object') {
+        if (originalParsed.content) {
+          // Single page format - preserve the structure
+          return JSON.stringify({
+            ...originalParsed,
+            content: cleanText.replace(/\n/g, '\\n')
+          });
+        } else if (Array.isArray(originalParsed)) {
+          // Multiple pages format - split by page breaks and preserve structure
+          const pages = cleanText.split('\n\n--- Page Break ---\n\n');
+          const updatedPages = pages.map((pageContent, index) => {
+            if (originalParsed[index]) {
+              return {
+                ...originalParsed[index],
+                content: pageContent.replace(/\n/g, '\\n')
+              };
+            }
+            return {
+              page_number: index + 1,
+              content: pageContent.replace(/\n/g, '\\n')
+            };
+          });
+          return JSON.stringify(updatedPages);
+        }
+      }
+    } catch (e) {
+      // Original wasn't JSON, return clean text with escaped newlines
+      return cleanText.replace(/\n/g, '\\n');
+    }
+    
+    return cleanText.replace(/\n/g, '\\n');
+  };
+
+  // Synchronized scrolling between left and right panes
+  const handleLeftPaneScroll = (e) => {
+    if (isScrolling) return;
+    
+    setIsScrolling(true);
+    const leftPane = e.target;
+    const rightPane = rightPaneRef.current;
+    
+    if (rightPane) {
+      const scrollPercentage = leftPane.scrollTop / (leftPane.scrollHeight - leftPane.clientHeight);
+      rightPane.scrollTop = scrollPercentage * (rightPane.scrollHeight - rightPane.clientHeight);
+    }
+    
+    setTimeout(() => setIsScrolling(false), 50);
+  };
+
+  const handleRightPaneScroll = (e) => {
+    if (isScrolling) return;
+    
+    setIsScrolling(true);
+    const rightPane = e.target;
+    const leftPane = leftPaneRef.current;
+    
+    if (leftPane) {
+      const scrollPercentage = rightPane.scrollTop / (rightPane.scrollHeight - rightPane.clientHeight);
+      leftPane.scrollTop = scrollPercentage * (leftPane.scrollHeight - leftPane.clientHeight);
+    }
+    
+    setTimeout(() => setIsScrolling(false), 50);
+  };
+
+  // Handle click on highlighted word to sync scroll to corresponding position
+  const handleWordClick = (word, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // Find the clicked element
+    const clickedElement = event.target;
+    const container = clickedElement.closest('.text-pane-content');
+    
+    if (!container) return;
+    
+    // Get the position of the clicked word relative to the container
+    const containerRect = container.getBoundingClientRect();
+    const elementRect = clickedElement.getBoundingClientRect();
+    const relativeTop = elementRect.top - containerRect.top + container.scrollTop;
+    
+    // Calculate scroll percentage
+    const scrollPercentage = relativeTop / (container.scrollHeight - container.clientHeight);
+    
+    // Determine which pane was clicked and scroll the other pane
+    const isLeftPane = container === leftPaneRef.current;
+    const targetPane = isLeftPane ? rightPaneRef.current : leftPaneRef.current;
+    
+    if (targetPane) {
+      setIsScrolling(true);
+      const targetScrollTop = scrollPercentage * (targetPane.scrollHeight - targetPane.clientHeight);
+      targetPane.scrollTop = targetScrollTop;
+      setTimeout(() => setIsScrolling(false), 50);
+      
+      // Show a brief visual feedback
+      clickedElement.style.backgroundColor = '#fef3c7';
+      clickedElement.style.transform = 'scale(1.05)';
+      clickedElement.style.boxShadow = '0 0 8px rgba(245, 158, 11, 0.5)';
+      setTimeout(() => {
+        clickedElement.style.backgroundColor = '';
+        clickedElement.style.transform = '';
+        clickedElement.style.boxShadow = '';
+      }, 300);
+    }
+  };
+
+  // Fetch vocabulary items for this note
+  const fetchNoteVocabulary = async () => {
+    try {
+      const response = await vocabularyAPI.getAll({ source_note: noteId });
+      const vocabularyItems = response.data.results || response.data;
+      
+      if (Array.isArray(vocabularyItems) && vocabularyItems.length > 0) {
+        // Get saved vocabulary words from API
+        const savedWords = vocabularyItems.map(item => item.word);
+        
+        // Merge with existing highlighted words (don't clear user selections)
+        setHighlightedWords(prev => {
+          const newSet = new Set([...prev, ...savedWords]);
+          return newSet;
+        });
+        
+        // Add saved vocabulary to all selected words (avoid duplicates)
+        const vocabularyWords = vocabularyItems.map(item => ({
+          word: item.word,
+          definition: {
+            definition: item.definition,
+            translation: item.target_language,
+            context: item.context_definition,
+            example: item.context_sentence
+          },
+          timestamp: Date.now(),
+          isSaved: true // Mark as saved vocabulary
+        }));
+        
+        setAllSelectedWords(prev => {
+          const existingWords = new Set(prev.map(item => item.word));
+          const newWords = vocabularyWords.filter(item => !existingWords.has(item.word));
+          return [...prev, ...newWords];
+        });
+        
+        // Update saved words
+        setSavedWords(vocabularyItems);
+      }
+      // Don't clear state if no vocabulary - keep user selections
+    } catch (error) {
+      console.error('Error fetching note vocabulary:', error);
+      // Don't clear state on error - keep user selections
+    }
+  };
+
+  // Handle vocabulary navigation - pre-highlight words and show vocabulary popup
+  useEffect(() => {
+    if (vocabularyNavigation?.fromVocabulary && vocabularyNavigation?.highlightWord) {
+      const word = vocabularyNavigation.highlightWord;
+      const vocabularyItem = vocabularyNavigation.vocabularyItem;
+      
+      // Add word to highlighted words
+      setHighlightedWords(prev => new Set([...prev, word]));
+      
+      // Add to all selected words with the vocabulary item data
+      if (vocabularyItem) {
+        setAllSelectedWords(prev => {
+          const existingIndex = prev.findIndex(item => item.word === word);
+          if (existingIndex >= 0) {
+            return prev; // Already exists
+          } else {
+            return [...prev, { 
+              word, 
+              definition: {
+                definition: vocabularyItem.definition,
+                translation: vocabularyItem.target_language,
+                context: vocabularyItem.context_definition,
+                example: vocabularyItem.context_sentence
+              },
+              timestamp: Date.now()
+            }];
+          }
+        });
+      }
+      
+      // Show vocabulary popup
+      setShowVocabPopup(true);
+      
+      // Navigate to the correct page if specified
+      if (vocabularyItem?.page_number) {
+        setCurrentPage(vocabularyItem.page_number);
+      }
+      
+      // Show a toast to indicate we're highlighting the word
+      toast.success(`Highlighting "${word}" from vocabulary`);
+    } else {
+      // If not from vocabulary navigation, fetch all vocabulary for this note
+      fetchNoteVocabulary();
+    }
+  }, [vocabularyNavigation, noteId]);
+
+  // Always fetch vocabulary for this note when component mounts or noteId changes
+  useEffect(() => {
+    if (noteId) {
+      // First, try to restore vocabulary state from localStorage
+      const savedState = localStorage.getItem(`vocabulary_${noteId}`);
+      if (savedState) {
+        try {
+          const parsedState = JSON.parse(savedState);
+          setHighlightedWords(new Set(parsedState.highlightedWords || []));
+          setAllSelectedWords(parsedState.allSelectedWords || []);
+          setSavedWords(parsedState.savedWords || []);
+        } catch (error) {
+          console.error('Error parsing saved vocabulary state:', error);
+        }
+      }
+      
+      // Then fetch fresh vocabulary from API
+      fetchNoteVocabulary();
+    }
+  }, [noteId]);
+
+  // Handle showVocabulary prop from parent
+  useEffect(() => {
+    if (showVocabulary && allSelectedWords.length > 0) {
+      setShowVocabPopup(true);
+    } else if (!showVocabulary) {
+      setShowVocabPopup(false);
+    }
+  }, [showVocabulary, allSelectedWords.length]);
+
+  // Persist vocabulary state to localStorage whenever it changes
+  useEffect(() => {
+    if (noteId && (highlightedWords.size > 0 || allSelectedWords.length > 0 || savedWords.length > 0)) {
+      const stateToSave = {
+        highlightedWords: Array.from(highlightedWords),
+        allSelectedWords,
+        savedWords
+      };
+      localStorage.setItem(`vocabulary_${noteId}`, JSON.stringify(stateToSave));
+    }
+  }, [noteId, highlightedWords, allSelectedWords, savedWords]);
+
+  // Expose handleWordClick to global scope for onclick handlers
+  useEffect(() => {
+    window.handleWordClick = handleWordClick;
+    return () => {
+      delete window.handleWordClick;
+    };
+  }, []);
+
+  // Parse content - check if it's page-based JSON or plain text
+  const parseContent = (content) => {
+    if (!content) return [];
+    
+    try {
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].page_number) {
+        // Page-based content - unescape newlines
+        return parsed.map(page => page.content ? page.content.replace(/\\n/g, '\n') : '');
+      } else if (parsed && typeof parsed === 'object' && parsed.content) {
+        // Single page format - unescape newlines
+        return [parsed.content.replace(/\\n/g, '\n')];
+      }
+    } catch (e) {
+      // Not JSON, treat as plain text - unescape newlines
+      return [content.replace(/\\n/g, '\n')];
+    }
+    
+    // Fallback to word-based splitting for plain text
+    const words = content.split(' ');
+    const pages = [];
+    const wordsPerPage = 200;
+    for (let i = 0; i < words.length; i += wordsPerPage) {
+      pages.push(words.slice(i, i + wordsPerPage).join(' '));
+    }
+    return pages;
+  };
+
+  // Custom component to render markdown with highlights
+  const MarkdownWithHighlights = ({ content, highlightedWords }) => {
+    if (!content) return null;
+    
+    // Convert markdown to HTML first
+    const htmlContent = content
+      .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold text-gray-900 mb-4 pb-2 border-b-2 border-blue-500">$1</h1>')
+      .replace(/^## (.*$)/gim, '<h2 class="text-xl font-bold text-gray-800 mb-3 pb-1 border-b border-gray-300">$1</h2>')
+      .replace(/^### (.*$)/gim, '<h3 class="text-lg font-semibold text-gray-700 mb-2">$1</h3>')
+      .replace(/^\* (.*$)/gim, '<li class="text-gray-700 leading-relaxed">$1</li>')
+      .replace(/^- (.*$)/gim, '<li class="text-gray-700 leading-relaxed">$1</li>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-gray-900">$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em class="italic text-gray-600">$1</em>')
+      .replace(/\n\n/g, '</p><p class="text-gray-700 leading-relaxed mb-3">')
+      .replace(/\n/g, '<br>');
+    
+    // Wrap in paragraph tags
+    let finalContent = `<p class="text-gray-700 leading-relaxed mb-3">${htmlContent}</p>`;
+    
+    // Add highlights
+    if (highlightedWords.size > 0) {
+      const sortedWords = Array.from(highlightedWords).sort((a, b) => b.length - a.length);
+      console.log('Applying highlights to words:', sortedWords);
+      
+              sortedWords.forEach(word => {
+          // Escape special regex characters
+          const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          
+          // Use a more flexible regex that doesn't rely on word boundaries
+          // This will match the word even if it's part of a larger word or has special characters
+          const regex = new RegExp(`(${escapedWord})`, 'gi');
+          
+          finalContent = finalContent.replace(regex, (match) => {
+            return `<span class="selected-word-highlight" style="background-color: #fef3c7; border-bottom: 2px solid #f59e0b; padding: 1px 2px; border-radius: 3px; font-weight: 500; display: inline; cursor: pointer; transition: all 0.2s ease;" data-word="${word}" onclick="window.handleWordClick('${word}', event)">${match}</span>`;
+          });
+        });
+    }
+    
+    return <div dangerouslySetInnerHTML={{ __html: finalContent }} />;
+  };
+
+  const originalPages = parseContent(originalContent);
+  const translatedPages = parseContent(translatedContent);
+
+  const getWordDefinition = async (word) => {
+    setIsLoadingDefinition(true);
+    try {
+      // Use AI to get definition and translation
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/api/translation/define/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          word: word,
+          source_language: sourceLanguage,
+          target_language: targetLanguage,
+          context: currentOriginalPage
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setWordDefinition(data);
+        setCurrentWordDefinition(data); // Also store in current word definition
+        
+        // Add to all selected words list
+        setAllSelectedWords(prev => {
+          // Check if word already exists, if so update it, otherwise add new
+          const existingIndex = prev.findIndex(item => item.word === word);
+          if (existingIndex >= 0) {
+            // Update existing word
+            const updated = [...prev];
+            updated[existingIndex] = { word, definition: data, timestamp: Date.now() };
+            return updated;
+          } else {
+            // Add new word
+            return [...prev, { word, definition: data, timestamp: Date.now() }];
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error getting definition:', error);
+    } finally {
+      setIsLoadingDefinition(false);
+    }
+  };
+
+  const clearPreviousHighlights = () => {
+    // Remove all previous highlights
+    const highlights = document.querySelectorAll('.selected-word-highlight');
+    highlights.forEach(highlight => {
+      const parent = highlight.parentNode;
+      parent.replaceChild(document.createTextNode(highlight.textContent), highlight);
+      parent.normalize(); // Merge adjacent text nodes
+    });
+  };
+
+  const handleTextSelection = (e) => {
+    const selection = window.getSelection();
+    const text = selection.toString().trim();
+    
+    console.log('Text selection:', text, 'Length:', text.length);
+    
+    if (text && text.length > 0) { // Allow any non-empty text selection
+      setSelectedText(text);
+      setShowVocabPopup(true);
+      
+      // Add word to highlighted words set
+      setHighlightedWords(prev => {
+        const newSet = new Set([...prev, text]);
+        console.log('Highlighted words set:', Array.from(newSet));
+        return newSet;
+      });
+      
+      console.log('Added word to highlights:', text);
+      
+      // Get context sentence - try to get the sentence containing the selected text
+      let contextSentence = text;
+      try {
+        const range = selection.getRangeAt(0);
+        const container = range.commonAncestorContainer;
+        let sentenceText = '';
+        
+        if (container.nodeType === Node.TEXT_NODE) {
+          sentenceText = container.textContent;
+        } else {
+          sentenceText = container.innerText || container.textContent;
+        }
+        
+        // Try to extract the sentence containing the selected text
+        const sentences = sentenceText.split(/[.!?]+/);
+        const selectedSentence = sentences.find(sentence => 
+          sentence.toLowerCase().includes(text.toLowerCase())
+        );
+        
+        if (selectedSentence && selectedSentence.trim().length > 0) {
+          contextSentence = selectedSentence.trim();
+        }
+      } catch (error) {
+        console.log('Could not extract context sentence:', error);
+      }
+      
+      // Store context sentence for later use
+      setSelectedText(text);
+      setContextSentence(contextSentence);
+      
+      // Don't clear the selection immediately - let the user see what they selected
+      // The selection will be cleared when they click elsewhere or select new text
+      
+      // Get definition for the selected word
+      getWordDefinition(text);
+    }
+    // Don't close popup if no text selected - let user explicitly close it
+  };
+
+  // Only close popup when user explicitly clicks the close button
+  const handleClosePopup = () => {
+    setShowVocabPopup(false);
+    setSelectedText('');
+    setWordDefinition(null);
+    // Don't clear allSelectedWords or highlightedWords - keep them persistent
+  };
+
+  // Remove a saved word from the list
+  const handleRemoveSavedWord = (wordId) => {
+    const wordToRemove = savedWords.find(w => w.id === wordId);
+    if (wordToRemove) {
+      setSavedWords(prev => prev.filter(word => word.id !== wordId));
+      // Also remove from highlighted words
+      setHighlightedWords(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(wordToRemove.word);
+        return newSet;
+      });
+    }
+  };
+
+  // Remove a selected word from the allSelectedWords list
+  const handleRemoveSelectedWord = (word) => {
+    setAllSelectedWords(prev => prev.filter(item => item.word !== word));
+    // Also remove from highlighted words
+    setHighlightedWords(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(word);
+      return newSet;
+    });
+  };
+
+  // Save individual word to vocabulary
+  const handleSaveWordToVocabulary = async (word, definition) => {
+    // Check if user is logged in
+    if (!currentUser) {
+      setShowLoginPrompt(true);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const response = await vocabularyAPI.saveWord({
+        word: word,
+        context_sentence: contextSentence || word, // Use captured context or fallback to word
+        source_note_id: noteId,
+        page_number: currentPage,
+        source_language: sourceLanguage,
+        target_language: targetLanguage
+      });
+
+      toast.success(`"${word}" saved to vocabulary!`);
+      
+      // Add to saved words list
+      const newSavedWord = {
+        id: response.data?.id || Date.now(),
+        word: word,
+        definition: definition?.definition || '',
+        context_definition: definition?.context || '',
+        context_sentence: word,
+        source_language: sourceLanguage,
+        target_language: targetLanguage,
+        page_number: currentPage
+      };
+      
+      setSavedWords(prev => [...prev, newSavedWord]);
+      
+    } catch (error) {
+      console.error('Error saving word:', error);
+      if (error.isLoginRequired) {
+        setShowLoginPrompt(true);
+      } else {
+        toast.error(`Failed to save "${word}" to vocabulary`);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Save all selected words to vocabulary
+  const handleSaveAllToVocabulary = async () => {
+    if (allSelectedWords.length === 0) return;
+
+    // Check if user is logged in
+    if (!currentUser) {
+      setShowLoginPrompt(true);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const savePromises = allSelectedWords.map(item => 
+        vocabularyAPI.saveWord({
+          word: item.word,
+          context_sentence: contextSentence || item.word,
+          source_note_id: noteId,
+          page_number: currentPage,
+          source_language: sourceLanguage,
+          target_language: targetLanguage
+        })
+      );
+
+      const responses = await Promise.all(savePromises);
+      
+      // Add all to saved words list
+      const newSavedWords = allSelectedWords.map((item, index) => ({
+        id: responses[index].data?.id || Date.now() + index,
+        word: item.word,
+        definition: item.definition?.definition || '',
+        context_definition: item.definition?.context || '',
+        context_sentence: item.word,
+        source_language: sourceLanguage,
+        target_language: targetLanguage,
+        page_number: currentPage
+      }));
+      
+      setSavedWords(prev => [...prev, ...newSavedWords]);
+      
+      toast.success(`${allSelectedWords.length} words saved to vocabulary!`);
+      
+      // Clear all selected words after saving
+      setAllSelectedWords([]);
+      setHighlightedWords(new Set());
+      
+    } catch (error) {
+      console.error('Error saving words:', error);
+      if (error.isLoginRequired) {
+        setShowLoginPrompt(true);
+      } else {
+        toast.error('Failed to save some words to vocabulary');
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= Math.max(originalPages.length, translatedPages.length)) {
+      setCurrentPage(newPage);
+      if (onPageChange) {
+        onPageChange(newPage);
+      }
+    }
+  };
+
+  const currentOriginalPage = originalPages[currentPage - 1] || '';
+  const currentTranslatedPage = translatedPages[currentPage - 1] || '';
+
+  return (
+    <div className="space-y-4">
+      {/* Page Navigation */}
+      <div className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm border">
+        <button
+          onClick={() => handlePageChange(currentPage - 1)}
+          disabled={currentPage <= 1}
+          className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          <span>Previous</span>
+        </button>
+
+        <div className="flex items-center space-x-4">
+          <span className="text-sm text-gray-600">
+            Page {currentPage} of {Math.max(originalPages.length, translatedPages.length)}
+          </span>
+          <input
+            type="number"
+            min="1"
+            max={Math.max(originalPages.length, translatedPages.length)}
+            value={currentPage}
+            onChange={(e) => handlePageChange(parseInt(e.target.value))}
+            className="w-16 px-2 py-1 text-sm border border-gray-300 rounded text-center"
+          />
+        </div>
+
+        <button
+          onClick={() => handlePageChange(currentPage + 1)}
+          disabled={currentPage >= Math.max(originalPages.length, translatedPages.length)}
+          className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+        >
+          <span>Next</span>
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Side-by-Side Content */}
+              <div className="grid md:grid-cols-2 gap-4 h-[70vh]">
+        {/* Original Content */}
+        <div className="text-pane">
+          <div className="text-pane-header">
+            <div className="flex items-center space-x-2">
+              <BookOpen className="h-4 w-4" />
+              <span>Original ({sourceLanguage})</span>
+            </div>
+            {isEditingOriginal && (
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={onSaveEditedOriginal}
+                  disabled={isSavingEdit}
+                  className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                >
+                  {isSavingEdit ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={onCancelEdit}
+                  disabled={isSavingEdit}
+                  className="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={onReTranslate}
+                  disabled={isTranslatingEdit}
+                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {isTranslatingEdit ? 'Translating...' : 'Re-translate'}
+                </button>
+              </div>
+            )}
+          </div>
+          {isEditingOriginal ? (
+            <div className="text-pane-content">
+              <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+                <strong>Edit Mode:</strong> You're now editing the original text. 
+                For multi-page documents, use <code className="bg-blue-100 px-1 rounded">--- Page Break ---</code> to separate pages.
+              </div>
+              <textarea
+                value={getCleanTextForEditing(editedOriginalContent)}
+                onChange={(e) => onEditedContentChange(convertCleanTextToOriginal(e.target.value))}
+                className="w-full h-full p-4 border border-gray-300 rounded-md resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm leading-relaxed"
+                placeholder="Edit your original text here...
+
+Tip: For multi-page documents, use '--- Page Break ---' to separate pages.
+All formatting will be preserved when you save."
+              />
+            </div>
+          ) : (
+            <div 
+              ref={leftPaneRef}
+              className="text-pane-content markdown-content"
+              onMouseUp={handleTextSelection}
+              onScroll={handleLeftPaneScroll}
+            >
+              <MarkdownWithHighlights 
+                content={currentOriginalPage} 
+                highlightedWords={highlightedWords} 
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Translated Content */}
+        <div className="text-pane">
+          <div className="text-pane-header">
+            <div className="flex items-center space-x-2">
+              <Globe className="h-4 w-4" />
+              <span>Translation ({targetLanguage})</span>
+            </div>
+          </div>
+                     <div 
+             ref={rightPaneRef}
+             className="text-pane-content markdown-content"
+             onMouseUp={handleTextSelection}
+             onScroll={handleRightPaneScroll}
+           >
+             <MarkdownWithHighlights 
+               content={currentTranslatedPage} 
+               highlightedWords={highlightedWords} 
+             />
+           </div>
+        </div>
+      </div>
+
+      {/* Horizontal Definition Box */}
+      {showVocabPopup && (
+        <div className="definition-box mt-4 bg-white rounded-lg shadow-lg border border-gray-200 p-4 animate-in slide-in-from-bottom-2 duration-300">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">
+              {selectedText ? `Selected: ${selectedText}` : 'Vocabulary Builder'}
+            </h3>
+            <button
+              onClick={handleClosePopup}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Loading State */}
+          {isLoadingDefinition && (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              <span className="ml-2 text-gray-600 text-sm">Getting definition...</span>
+            </div>
+          )}
+
+          {/* All Selected Words */}
+          {allSelectedWords.length > 0 && (
+            <div className="mb-4">
+              <h4 className="font-semibold text-gray-900 text-sm mb-3">Selected Words ({allSelectedWords.length})</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                 {allSelectedWords.map((item, index) => (
+                   <div key={`${item.word}-${item.timestamp}`} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                     <div className="flex items-start justify-between mb-2">
+                       <h5 className="font-medium text-gray-900 text-sm">{item.word}</h5>
+                       <div className="flex items-center space-x-1">
+                         <button
+                           onClick={() => handleSaveWordToVocabulary(item.word, item.definition)}
+                           disabled={isSaving}
+                           className="text-green-600 hover:text-green-700 disabled:text-gray-400"
+                           title="Save to vocabulary"
+                         >
+                           <Save className="h-4 w-4" />
+                         </button>
+                         <button
+                           onClick={() => handleRemoveSelectedWord(item.word)}
+                           className="text-red-400 hover:text-red-600"
+                           title="Remove word"
+                         >
+                           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                           </svg>
+                         </button>
+                       </div>
+                     </div>
+                    
+                    {item.definition && (
+                      <div className="space-y-2">
+                        {/* Definition */}
+                        <div>
+                          <h6 className="font-semibold text-gray-800 text-xs">Definition:</h6>
+                          <p className="text-xs text-gray-600 leading-relaxed">
+                            {item.definition.definition}
+                          </p>
+                        </div>
+
+                        {/* Translation */}
+                        <div>
+                          <h6 className="font-semibold text-gray-800 text-xs">Translation:</h6>
+                          <p className="text-xs text-gray-600">
+                            {item.definition.translation}
+                          </p>
+                        </div>
+
+                        {/* Context */}
+                        <div>
+                          <h6 className="font-semibold text-gray-800 text-xs">Context:</h6>
+                          <p className="text-xs text-gray-600 leading-relaxed">
+                            {item.definition.context}
+                          </p>
+                        </div>
+
+                        {/* Example */}
+                        {item.definition.example && (
+                          <div>
+                            <h6 className="font-semibold text-gray-800 text-xs">Example:</h6>
+                            <div className="bg-green-50 border border-green-200 rounded-md p-2">
+                              <p className="text-xs text-green-800 italic">
+                                "{item.definition.example}"
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Metadata */}
+                        <div className="text-xs text-gray-500 space-y-1">
+                          {item.definition.type && <div>Type: {item.definition.type}</div>}
+                          {item.definition.level && <div>Level: {item.definition.level}</div>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+                     {/* Action Button */}
+           {allSelectedWords.length > 0 && (
+             <div className="mt-4 pt-4 border-t border-gray-200">
+               <button
+                 onClick={handleSaveAllToVocabulary}
+                 disabled={isSaving}
+                 className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-400 transition-colors"
+               >
+                 <Save className="h-4 w-4" />
+                 <span>{isSaving ? 'Saving...' : `Save All (${allSelectedWords.length})`}</span>
+               </button>
+             </div>
+           )}
+
+          {/* Saved Words Section */}
+          {savedWords.length > 0 && (
+            <div className="mt-6 pt-4 border-t border-gray-200">
+              <h4 className="text-md font-semibold text-gray-900 mb-3">Saved Words ({savedWords.length})</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {savedWords.map((word) => (
+                  <div key={word.id} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h5 className="font-medium text-gray-900 text-sm">{word.word}</h5>
+                        {word.definition && (
+                          <p className="text-xs text-gray-600 mt-1 line-clamp-2">{word.definition}</p>
+                        )}
+                        <div className="text-xs text-gray-500 mt-1">
+                          {word.source_language} → {word.target_language}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveSavedWord(word.id)}
+                        className="text-red-400 hover:text-red-600 ml-2"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Login Prompt */}
+      <LoginPrompt
+        isOpen={showLoginPrompt}
+        onClose={() => setShowLoginPrompt(false)}
+        onSuccess={() => {
+          // Refresh vocabulary after successful login
+          fetchNoteVocabulary();
+        }}
+        title="Login Required to Save Vocabulary"
+      />
+
+    </div>
+  );
+}
