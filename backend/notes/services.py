@@ -494,6 +494,9 @@ class TranslationService:
             note.detected_language = detected_language
             note.save()
         
+        print(f"Translation completed. Content length: {len(translated_content) if translated_content else 0}")
+        print(f"Translated content preview: {translated_content[:200] if translated_content else 'None'}...")
+        
         # Create or update translation
         translation, created = Translation.objects.get_or_create(
             note=note,
@@ -516,6 +519,9 @@ class TranslationService:
                 'model_used': 'ai-translation'
             })
             translation.save()
+        
+        print(f"Translation saved. Created: {created}, ID: {translation.id}")
+        print(f"Final translation length: {len(translation.translated_content) if translation.translated_content else 0}")
         
         return translation
 
