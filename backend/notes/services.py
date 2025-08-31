@@ -113,23 +113,40 @@ Extract and format the text with proper markdown structure:""",
     
     def process_uploaded_file(self, note):
         """Process uploaded file and extract content"""
+        print(f"Processing uploaded file for note {note.id}")
+        
         if not note.file:
+            print("No file attached to note")
             return note.content
         
         file_path = note.file.path
+        print(f"File path: {file_path}")
+        print(f"File type: {note.file_type}")
         
-        if note.file_type == 'pdf':
-            content = self.extract_text_from_pdf(file_path)
-        elif note.file_type == 'image':
-            content = self.extract_text_from_image(file_path)
-        else:
-            # For text files, read directly
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-        
-        note.content = content
-        note.save()
-        return content
+        try:
+            if note.file_type == 'pdf':
+                print("Extracting text from PDF...")
+                content = self.extract_text_from_pdf(file_path)
+            elif note.file_type == 'image':
+                print("Extracting text from image...")
+                content = self.extract_text_from_image(file_path)
+            else:
+                print("Reading text file...")
+                # For text files, read directly
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    content = file.read()
+            
+            print(f"Extracted content length: {len(content) if content else 0}")
+            
+            # Save the extracted content to the note
+            note.content = content
+            note.save()
+            print(f"Content saved to note {note.id}")
+            return content
+            
+        except Exception as e:
+            print(f"Error processing file: {str(e)}")
+            raise e
 
 
 class TranslationService:
