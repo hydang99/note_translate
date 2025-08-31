@@ -291,7 +291,7 @@ class TranslationService:
                 detected_lang = 'en'
         
         # Split text into smaller chunks to avoid API issues
-        chunk_size = 3000  # Much smaller chunks to avoid 500 errors
+        chunk_size = 10000  # Much smaller chunks to avoid 500 errors
         chunks = []
         
         # Split by paragraphs first, then by sentences if needed
@@ -315,8 +315,8 @@ class TranslationService:
         for i, chunk in enumerate(chunks):
             print(f"Translating chunk {i+1}/{len(chunks)} ({len(chunk)} characters)")
             
-            # Retry logic for failed chunks with exponential backoff
-            max_retries = 5
+            # Retry logic for failed chunks with shorter delays
+            max_retries = 3
             chunk_translated = False
             
             for attempt in range(max_retries):
@@ -330,8 +330,8 @@ class TranslationService:
                 except Exception as e:
                     print(f"Chunk {i+1} translation failed (attempt {attempt + 1}): {e}")
                     if attempt < max_retries - 1:
-                        # Exponential backoff: 2, 4, 8, 16 seconds
-                        wait_time = 2 ** (attempt + 1)
+                        # Shorter backoff: 1, 2, 3 seconds
+                        wait_time = attempt + 1
                         print(f"Retrying chunk {i+1} in {wait_time} seconds...")
                         import time
                         time.sleep(wait_time)
