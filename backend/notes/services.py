@@ -21,29 +21,29 @@ class NoteService:
         """Extract text from PDF file with better formatting preservation"""
         print(f"Starting PDF text extraction from: {file_path}")
         
-        # Try PyPDF2 first for better reliability
+        # Try AI Vision first for better formatting preservation
         try:
-            print("Attempting PyPDF2 extraction...")
-            with open(file_path, 'rb') as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                text = ""
-                for page in pdf_reader.pages:
-                    text += page.extract_text() + "\n\n"
-                result = text.strip()
-                print(f"PyPDF2 extraction successful, content length: {len(result)}")
-                return result
-        except Exception as basic_error:
-            print(f"PyPDF2 extraction failed: {str(basic_error)}")
+            print("Attempting AI Vision extraction for better formatting...")
+            result = self.extract_text_from_pdf_with_vision(file_path)
+            print(f"AI Vision extraction successful, content length: {len(result) if result else 0}")
+            return result
+        except Exception as vision_error:
+            print(f"AI Vision extraction failed: {str(vision_error)}")
             
-            # Fallback to AI Vision if PyPDF2 fails
+            # Fallback to PyPDF2 if AI Vision fails
             try:
-                print("Falling back to AI Vision extraction...")
-                result = self.extract_text_from_pdf_with_vision(file_path)
-                print(f"AI Vision extraction successful, content length: {len(result) if result else 0}")
-                return result
-            except Exception as vision_error:
-                print(f"AI Vision fallback also failed: {str(vision_error)}")
-                raise Exception(f"Error extracting text from PDF: PyPDF2 failed: {str(basic_error)}. AI Vision also failed: {str(vision_error)}")
+                print("Falling back to PyPDF2 extraction...")
+                with open(file_path, 'rb') as file:
+                    pdf_reader = PyPDF2.PdfReader(file)
+                    text = ""
+                    for page in pdf_reader.pages:
+                        text += page.extract_text() + "\n\n"
+                    result = text.strip()
+                    print(f"PyPDF2 extraction successful, content length: {len(result)}")
+                    return result
+            except Exception as basic_error:
+                print(f"PyPDF2 fallback also failed: {str(basic_error)}")
+                raise Exception(f"Error extracting text from PDF: AI Vision failed: {str(vision_error)}. PyPDF2 also failed: {str(basic_error)}")
     
     def extract_text_from_pdf_with_vision(self, file_path):
         """Extract text from PDF using AI Vision API for better formatting"""
@@ -67,30 +67,23 @@ class NoteService:
                 img_data = pix.tobytes("png")
                 img = Image.open(io.BytesIO(img_data))
                 
-                # Use AI Vision to extract text with formatting
+                # Use AI Vision to extract text with proper sentence formatting
                 model = genai.GenerativeModel('gemini-2.5-flash')
                 response = model.generate_content([
-                    """Extract all text from this PDF page and convert it to well-formatted markdown. 
+                    """Extract all text from this PDF page and format it as proper, readable text.
 
 CRITICAL FORMATTING RULES:
-1. **Headings**: Use # for main titles, ## for major sections, ### for subsections
-2. **Lists**: Use - for bullet points, 1. 2. 3. for numbered lists
-3. **Emphasis**: Use **bold** for important text, *italic* for emphasis
-4. **Structure**: Preserve all indentation, spacing, and line breaks
-5. **Sections**: Add proper spacing between different sections
-6. **Lists**: If you see bullet points or numbered items, format them as proper markdown lists
-7. **Contact info**: Format addresses, emails, phone numbers clearly
-8. **Dates**: Keep dates and time periods clearly formatted
-9. **Education/Experience**: Use consistent formatting for entries
+1. **Preserve complete sentences** - do not break sentences into individual words
+2. **Maintain paragraph structure** - keep paragraphs together with proper spacing
+3. **Preserve punctuation** - maintain periods, commas, and other punctuation
+4. **Keep proper spacing** - use single spaces between words, double line breaks between paragraphs
+5. **Maintain text flow** - ensure text reads naturally as continuous prose
+6. **Preserve formatting** - keep headings, lists, and emphasis as they appear
+7. **Do not split words** - keep words together within sentences
 
-FORMATTING EXAMPLES:
-- For education: Use ## EDUCATION with proper spacing
-- For experience: Use ## EXPERIENCE with bullet points for details
-- For skills: Use ## SKILLS with bullet points
-- For publications: Use ## PUBLICATIONS with numbered lists
-- For contact: Use ## CONTACT with clear formatting
+IMPORTANT: Return the text as it would appear in a well-formatted document, with complete sentences and proper paragraph breaks. Do not return individual words on separate lines.
 
-Extract and format the text with proper markdown structure:""",
+Extract the text maintaining proper sentence structure and formatting:""",
                     img
                 ])
                 
