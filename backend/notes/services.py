@@ -256,6 +256,7 @@ class TranslationService:
             
             translated_text = response.text.strip()
             print(f"Translation completed, length: {len(translated_text)}")
+            print(translated_text[:500])
             
             return {
                 'translated_text': translated_text,
@@ -386,57 +387,70 @@ class TranslationService:
             print(f"JSON length: {len(pages_data) if isinstance(pages_data, list) else 'Not a list'}")
             
             if isinstance(pages_data, list) and len(pages_data) > 0 and 'page_number' in pages_data[0]:
-                # Page-based content - translate in batches to reduce API calls
+                # Page-based content - translate each page individually for better accuracy
                 translated_pages = []
-                
-                # For large documents, translate in batches of 3-5 pages
-                batch_size = 3 if len(pages_data) > 10 else 5
-                total_batches = (len(pages_data) + batch_size - 1) // batch_size
-                print(f"Translating {len(pages_data)} pages in {total_batches} batches of {batch_size}")
+                print(f"Translating {len(pages_data)} pages individually")
                 print(f"Content preview: {note.content[:200]}...")
                 
-                for i in range(0, len(pages_data), batch_size):
-                    batch = pages_data[i:i + batch_size]
-                    batch_num = (i // batch_size) + 1
-                    print(f"Processing batch {batch_num}/{total_batches} (pages {i+1}-{min(i+batch_size, len(pages_data))})")
+                # Function to translate a single page
+                def translate_single_page(page_data):
+                    page_num = page_data['page_number']
+                    content = page_data['content']
+                    print(f"Translating page {page_num} ({len(content)} characters)")
                     
-                    # Combine batch content with page markers
-                    batch_content = ""
-                    for page_data in batch:
-                        batch_content += f"\n\n--- PAGE {page_data['page_number']} ---\n\n"
-                        batch_content += page_data['content']
+                    try:
+                        result = self.translate_text(
+                            content,
+                            note.source_language,
+                            note.target_language
+                        )
+                        print(f"Page {page_num} translated successfully")
+                        return page_num, result['translated_text'], result['detected_language'], True
+                    except Exception as e:
+                        print(f"Page {page_num} translation failed: {e}")
+                        return page_num, content, None, False
+                
+                # Process pages in parallel for better performance
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                import time
+                
+                print(f"Starting parallel translation of {len(pages_data)} pages...")
+                start_time = time.time()
+                
+                # Use ThreadPoolExecutor for parallel processing
+                # Limit to 3 concurrent requests to avoid overwhelming the API
+                max_workers = min(3, len(pages_data))
+                
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    # Submit all pages for translation
+                    future_to_page = {
+                        executor.submit(translate_single_page, page_data): page_data['page_number'] 
+                        for page_data in pages_data
+                    }
                     
-                    # Translate the batch
-                    print(f"Translating batch {batch_num} ({len(batch_content)} characters)")
-                    result = self.translate_text(
-                        batch_content,
-                        note.source_language,
-                        note.target_language
-                    )
-                    print(f"Batch {batch_num} translation completed")
-                    
-                    # Use the detected language from the first batch
-                    if detected_language is None:
-                        detected_language = result['detected_language']
-                    
-                    # Split the translated batch back into pages
-                    translated_batch = result['translated_text']
-                    page_sections = translated_batch.split('--- PAGE')
-                    
-                    for j, page_data in enumerate(batch):
-                        if j + 1 < len(page_sections):
-                            # Extract content for this page
-                            page_content = page_sections[j + 1].split('---')[0].strip()
-                            translated_pages.append({
-                                'page_number': page_data['page_number'],
-                                'content': page_content
-                            })
+                    # Collect results as they complete
+                    for future in as_completed(future_to_page):
+                        page_num, translated_text, detected_lang, success = future.result()
+                        
+                        # Use the detected language from the first successful translation
+                        if detected_language is None and detected_lang:
+                            detected_language = detected_lang
+                        
+                        translated_pages.append({
+                            'page_number': page_num,
+                            'content': translated_text
+                        })
+                        
+                        if success:
+                            print(f"✅ Page {page_num} completed successfully")
                         else:
-                            # Fallback: use the original content if splitting failed
-                            translated_pages.append({
-                                'page_number': page_data['page_number'],
-                                'content': page_data['content']
-                            })
+                            print(f"❌ Page {page_num} failed, using original content")
+                
+                end_time = time.time()
+                print(f"Parallel page translation completed in {end_time - start_time:.2f} seconds")
+                
+                # Sort pages by page number to maintain order
+                translated_pages.sort(key=lambda x: x['page_number'])
                 
                 translated_content = json.dumps(translated_pages)
             else:
