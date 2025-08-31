@@ -20,28 +20,30 @@ class NoteService:
     def extract_text_from_pdf(self, file_path):
         """Extract text from PDF file with better formatting preservation"""
         print(f"Starting PDF text extraction from: {file_path}")
+        
+        # Try PyPDF2 first for better reliability
         try:
-            # Always use AI Vision for better formatting preservation
-            print("Attempting AI Vision extraction...")
-            result = self.extract_text_from_pdf_with_vision(file_path)
-            print(f"AI Vision extraction successful, content length: {len(result) if result else 0}")
-            return result
-        except Exception as e:
-            print(f"AI Vision extraction failed: {str(e)}")
-            # Fallback to basic PyPDF2 if vision fails
+            print("Attempting PyPDF2 extraction...")
+            with open(file_path, 'rb') as file:
+                pdf_reader = PyPDF2.PdfReader(file)
+                text = ""
+                for page in pdf_reader.pages:
+                    text += page.extract_text() + "\n\n"
+                result = text.strip()
+                print(f"PyPDF2 extraction successful, content length: {len(result)}")
+                return result
+        except Exception as basic_error:
+            print(f"PyPDF2 extraction failed: {str(basic_error)}")
+            
+            # Fallback to AI Vision if PyPDF2 fails
             try:
-                print("Falling back to PyPDF2 extraction...")
-                with open(file_path, 'rb') as file:
-                    pdf_reader = PyPDF2.PdfReader(file)
-                    text = ""
-                    for page in pdf_reader.pages:
-                        text += page.extract_text() + "\n\n"
-                    result = text.strip()
-                    print(f"PyPDF2 extraction successful, content length: {len(result)}")
-                    return result
-            except Exception as basic_error:
-                print(f"PyPDF2 fallback also failed: {str(basic_error)}")
-                raise Exception(f"Error extracting text from PDF: {str(e)}. Basic fallback also failed: {str(basic_error)}")
+                print("Falling back to AI Vision extraction...")
+                result = self.extract_text_from_pdf_with_vision(file_path)
+                print(f"AI Vision extraction successful, content length: {len(result) if result else 0}")
+                return result
+            except Exception as vision_error:
+                print(f"AI Vision fallback also failed: {str(vision_error)}")
+                raise Exception(f"Error extracting text from PDF: PyPDF2 failed: {str(basic_error)}. AI Vision also failed: {str(vision_error)}")
     
     def extract_text_from_pdf_with_vision(self, file_path):
         """Extract text from PDF using AI Vision API for better formatting"""
@@ -183,6 +185,9 @@ class TranslationService:
         """Initialize AI service"""
         if settings.GEMINI_API_KEY:
             genai.configure(api_key=settings.GEMINI_API_KEY)
+            print("Gemini API configured successfully")
+        else:
+            print("WARNING: GEMINI_API_KEY not found in settings")
     
     def translate_text(self, text, source_lang='auto', target_lang='vi'):
         """Translate text using AI and detect actual source language"""
@@ -263,8 +268,8 @@ class TranslationService:
                 print(f"Language detection failed, using 'en' as default: {e}")
                 detected_lang = 'en'
         
-        # Split text into chunks of ~8000 characters (safe limit)
-        chunk_size = 8000
+        # Split text into smaller chunks to avoid API issues
+        chunk_size = 3000  # Much smaller chunks to avoid 500 errors
         chunks = []
         
         # Split by paragraphs first, then by sentences if needed
@@ -288,8 +293,8 @@ class TranslationService:
         for i, chunk in enumerate(chunks):
             print(f"Translating chunk {i+1}/{len(chunks)} ({len(chunk)} characters)")
             
-            # Retry logic for failed chunks
-            max_retries = 3
+            # Retry logic for failed chunks with exponential backoff
+            max_retries = 5
             chunk_translated = False
             
             for attempt in range(max_retries):
@@ -303,9 +308,11 @@ class TranslationService:
                 except Exception as e:
                     print(f"Chunk {i+1} translation failed (attempt {attempt + 1}): {e}")
                     if attempt < max_retries - 1:
-                        print(f"Retrying chunk {i+1} in 2 seconds...")
+                        # Exponential backoff: 2, 4, 8, 16 seconds
+                        wait_time = 2 ** (attempt + 1)
+                        print(f"Retrying chunk {i+1} in {wait_time} seconds...")
                         import time
-                        time.sleep(2)  # Wait 2 seconds before retry
+                        time.sleep(wait_time)
             
             if not chunk_translated:
                 print(f"Chunk {i+1} failed after {max_retries} attempts, using original text")
