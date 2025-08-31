@@ -193,9 +193,24 @@ class TranslationService:
         """Translate text using AI and detect actual source language"""
         print(f"Starting translate_text with {len(text)} characters")
         print(f"Source language: {source_lang}, Target language: {target_lang}")
+        
+        # Clean and validate text
+        if not text or not text.strip():
+            raise Exception("Empty text provided for translation")
+        
+        # Remove any problematic characters that might cause API issues
+        cleaned_text = text.strip()
+        print(f"Text cleaned, length: {len(cleaned_text)}")
+        
         try:
-            model = genai.GenerativeModel('gemini-2.5-flash')
-            print("AI model initialized successfully")
+            # Try different model configurations for better reliability
+            try:
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                print("AI model (gemini-1.5-flash) initialized successfully")
+            except Exception as model_error:
+                print(f"Failed to initialize gemini-1.5-flash: {model_error}")
+                model = genai.GenerativeModel('gemini-2.5-flash')
+                print("AI model (gemini-2.5-flash) initialized successfully")
             
             detected_lang = source_lang
             
@@ -205,7 +220,7 @@ class TranslationService:
                 detection_prompt = f"""
                 Detect the language of the following text. Return only the language code (e.g., 'en', 'es', 'fr', 'de', 'vi', 'zh', 'ja', 'ko').
                 
-                Text: {text[:500]}  # Use first 500 chars for detection
+                Text: {cleaned_text[:500]}  # Use first 500 chars for detection
                 """
                 
                 detection_response = model.generate_content(detection_prompt)
@@ -232,11 +247,23 @@ class TranslationService:
             Return only the translated text without any additional commentary.
             
             Text to translate:
-            {text}
+            {cleaned_text}
             """
             
             print("Sending translation request to AI...")
-            response = model.generate_content(prompt)
+            
+            # Add generation configuration for better handling
+            generation_config = {
+                "temperature": 0,  # Low temperature for consistent translation
+                "top_p": 0.8,
+                "top_k": 40,
+                "max_output_tokens": 65536,  # Ensure we can handle large responses
+            }
+            
+            response = model.generate_content(
+                prompt,
+                generation_config=generation_config
+            )
             print("Translation response received")
             
             translated_text = response.text.strip()
