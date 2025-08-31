@@ -23,4 +23,4 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
 
 # Run migrations and start server directly (no cd needed since WORKDIR is already /app/backend)
-CMD ["sh", "-c", "python manage.py migrate && gunicorn note_translate.wsgi:application --bind 0.0.0.0:$PORT"]
+CMD ["sh", "-c", "python manage.py migrate --settings=note_translate.settings_production && gunicorn note_translate.wsgi:application --bind 0.0.0.0:$PORT --settings=note_translate.settings_production"]
