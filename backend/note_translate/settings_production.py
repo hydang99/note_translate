@@ -34,7 +34,8 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # CORS settings for production
 CORS_ALLOWED_ORIGINS = [
-    "https://web-production-4646.up.railway.app",  # Replace with your actual Vercel domain
+    "https://web-production-4646.up.railway.app",
+    "https://note-translate-meowj9nn8-hy-dangs-projects-9554bf41.vercel.app",  # Vercel frontend
     "http://localhost:3000",  # For local development
 ]
 
