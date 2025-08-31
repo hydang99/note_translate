@@ -1,3 +1,4 @@
+# Force rebuild - test simple container startup
 FROM python:3.9-slim
 
 # Install system dependencies
