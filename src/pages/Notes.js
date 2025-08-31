@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { notesAPI } from '../services/api';
-import { Plus, FileText, Calendar, Globe, Eye, Clock, ArrowLeft } from 'lucide-react';
+import { Plus, FileText, Calendar, Globe, Eye, Clock, ArrowLeft, Trash2, CheckSquare, Square } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function Notes() {
@@ -11,6 +11,9 @@ export default function Notes() {
   const [searchTerm, setSearchTerm] = useState('');
   const [tagFilter, setTagFilter] = useState('');
   const [currentNote, setCurrentNote] = useState(null);
+  const [selectedNotes, setSelectedNotes] = useState(new Set());
+  const [isBulkMode, setIsBulkMode] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     fetchNotes();
@@ -109,6 +112,60 @@ export default function Notes() {
     }
   };
 
+  // Bulk operations
+  const toggleBulkMode = () => {
+    setIsBulkMode(!isBulkMode);
+    setSelectedNotes(new Set());
+  };
+
+  const toggleNoteSelection = (noteId) => {
+    const newSelected = new Set(selectedNotes);
+    if (newSelected.has(noteId)) {
+      newSelected.delete(noteId);
+    } else {
+      newSelected.add(noteId);
+    }
+    setSelectedNotes(newSelected);
+  };
+
+  const selectAllNotes = () => {
+    setSelectedNotes(new Set(filteredNotes.map(note => note.id)));
+  };
+
+  const selectNoneNotes = () => {
+    setSelectedNotes(new Set());
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedNotes.size === 0) return;
+
+    const noteCount = selectedNotes.size;
+    const noteText = noteCount === 1 ? 'note' : 'notes';
+    
+    if (!window.confirm(`Are you sure you want to delete ${noteCount} ${noteText}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      // Delete notes in parallel
+      const deletePromises = Array.from(selectedNotes).map(noteId => 
+        notesAPI.delete(noteId)
+      );
+      
+      await Promise.all(deletePromises);
+      
+      // Update the notes list
+      setNotes(notes.filter(note => !selectedNotes.has(note.id)));
+      setSelectedNotes(new Set());
+      setIsBulkMode(false);
+      
+      toast.success(`${noteCount} ${noteText} deleted successfully`);
+    } catch (error) {
+      console.error('Error deleting notes:', error);
+      toast.error('Failed to delete some notes');
+    }
+  };
+
   const filteredNotes = Array.isArray(notes) ? notes.filter(note => {
     const matchesSearch = note.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          getReadableContent(note.content).toLowerCase().includes(searchTerm.toLowerCase());
@@ -134,14 +191,77 @@ export default function Notes() {
           <h1 className="text-3xl font-bold text-gray-900">My Notes</h1>
           <p className="text-gray-600 mt-2">Manage and view your translated notes</p>
         </div>
-        <Link
-          to="/"
-          className="flex items-center space-x-2 bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          <span>New Note</span>
-        </Link>
+        <div className="flex items-center space-x-3">
+          {filteredNotes.length > 0 && (
+            <button
+              onClick={toggleBulkMode}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+                isBulkMode 
+                  ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {isBulkMode ? (
+                <>
+                  <Square className="h-4 w-4" />
+                  <span>Exit Selection</span>
+                </>
+              ) : (
+                <>
+                  <CheckSquare className="h-4 w-4" />
+                  <span>Select Multiple</span>
+                </>
+              )}
+            </button>
+          )}
+          <Link
+            to="/"
+            className="flex items-center space-x-2 bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            <span>New Note</span>
+          </Link>
+        </div>
       </div>
+
+      {/* Bulk Operations Toolbar */}
+      {isBulkMode && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <span className="text-sm font-medium text-blue-900">
+                {selectedNotes.size} of {filteredNotes.length} notes selected
+              </span>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={selectAllNotes}
+                  className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  Select All
+                </button>
+                <span className="text-blue-300">|</span>
+                <button
+                  onClick={selectNoneNotes}
+                  className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  Select None
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center space-x-3">
+              {selectedNotes.size > 0 && (
+                <button
+                  onClick={handleBulkDelete}
+                  className="flex items-center space-x-2 bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span>Delete Selected ({selectedNotes.size})</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Continue Reading Section */}
       {currentNote && (
@@ -224,12 +344,27 @@ export default function Notes() {
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredNotes.map((note) => (
-            <div key={note.id} className="bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow">
+            <div 
+              key={note.id} 
+              className={`bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow ${
+                isBulkMode && selectedNotes.has(note.id) ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+              }`}
+            >
               <div className="p-6">
                 <div className="flex items-start justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900 line-clamp-2">
-                    {note.title}
-                  </h3>
+                  <div className="flex items-start space-x-3 flex-1">
+                    {isBulkMode && (
+                      <input
+                        type="checkbox"
+                        checked={selectedNotes.has(note.id)}
+                        onChange={() => toggleNoteSelection(note.id)}
+                        className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                    )}
+                    <h3 className="text-lg font-semibold text-gray-900 line-clamp-2 flex-1">
+                      {note.title}
+                    </h3>
+                  </div>
                   <div className="flex items-center space-x-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                     <FileText className="h-3 w-3" />
                     <span>{note.file_type.toUpperCase()}</span>
@@ -289,12 +424,14 @@ export default function Notes() {
                         Translated
                       </span>
                     )}
-                    <button
-                      onClick={() => handleDelete(note.id)}
-                      className="text-red-600 hover:text-red-700 text-sm"
-                    >
-                      Delete
-                    </button>
+                    {!isBulkMode && (
+                      <button
+                        onClick={() => handleDelete(note.id)}
+                        className="text-red-600 hover:text-red-700 text-sm"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
