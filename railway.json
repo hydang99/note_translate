@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "python3 manage.py migrate && gunicorn note_translate.wsgi:application --bind 0.0.0.0:$PORT",
+    "startCommand": "export DJANGO_SETTINGS_MODULE=note_translate.settings_production && echo 'Starting migrations...' && python3 manage.py migrate && echo 'Migrations completed, starting Gunicorn...' && gunicorn note_translate.wsgi:application --bind 0.0.0.0:$PORT --log-level debug",
     "healthcheckPath": "/api/",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
