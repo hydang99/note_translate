@@ -186,13 +186,17 @@ class TranslationService:
     
     def translate_text(self, text, source_lang='auto', target_lang='vi'):
         """Translate text using AI and detect actual source language"""
+        print(f"Starting translate_text with {len(text)} characters")
+        print(f"Source language: {source_lang}, Target language: {target_lang}")
         try:
             model = genai.GenerativeModel('gemini-2.5-flash')
+            print("AI model initialized successfully")
             
             detected_lang = source_lang
             
             # If auto-detect, first detect the language
             if source_lang == 'auto':
+                print("Detecting language...")
                 detection_prompt = f"""
                 Detect the language of the following text. Return only the language code (e.g., 'en', 'es', 'fr', 'de', 'vi', 'zh', 'ja', 'ko').
                 
@@ -201,6 +205,7 @@ class TranslationService:
                 
                 detection_response = model.generate_content(detection_prompt)
                 detected_lang = detection_response.text.strip().lower()
+                print(f"Detected language: {detected_lang}")
                 
                 # Clean up the response (remove quotes, extra text)
                 detected_lang = detected_lang.replace('"', '').replace("'", '').strip()
@@ -213,6 +218,7 @@ class TranslationService:
                 }
                 detected_lang = lang_mapping.get(detected_lang, detected_lang)
             
+            print(f"Starting translation from {detected_lang} to {target_lang}")
             prompt = f"""
             Translate the following text from {detected_lang} to {target_lang}.
             
@@ -224,9 +230,15 @@ class TranslationService:
             {text}
             """
             
+            print("Sending translation request to AI...")
             response = model.generate_content(prompt)
+            print("Translation response received")
+            
+            translated_text = response.text.strip()
+            print(f"Translation completed, length: {len(translated_text)}")
+            
             return {
-                'translated_text': response.text.strip(),
+                'translated_text': translated_text,
                 'detected_language': detected_lang
             }
             
@@ -319,13 +331,19 @@ class TranslationService:
             # Plain text content
             print(f"JSON parsing failed: {e}")
             print("Treating as plain text content")
-            result = self.translate_text(
-                note.content,
-                note.source_language,
-                note.target_language
-            )
-            translated_content = result['translated_text']
-            detected_language = result['detected_language']
+            print(f"About to translate {len(note.content)} characters of plain text")
+            try:
+                result = self.translate_text(
+                    note.content,
+                    note.source_language,
+                    note.target_language
+                )
+                print("Translation completed successfully")
+                translated_content = result['translated_text']
+                detected_language = result['detected_language']
+            except Exception as translate_error:
+                print(f"Translation failed: {translate_error}")
+                raise translate_error
         
         # Update the note with detected language
         if detected_language and note.source_language == 'auto':
