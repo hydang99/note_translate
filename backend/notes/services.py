@@ -311,34 +311,62 @@ class TranslationService:
         
         print(f"Split into {len(chunks)} chunks")
         
-        translated_chunks = []
-        for i, chunk in enumerate(chunks):
-            print(f"Translating chunk {i+1}/{len(chunks)} ({len(chunk)} characters)")
+        # Function to translate a single chunk with retry logic
+        def translate_chunk_with_retry(chunk_data):
+            chunk_index, chunk = chunk_data
+            print(f"Starting translation of chunk {chunk_index + 1}/{len(chunks)} ({len(chunk)} characters)")
             
-            # Retry logic for failed chunks with shorter delays
             max_retries = 3
-            chunk_translated = False
-            
             for attempt in range(max_retries):
                 try:
                     # Use detected language instead of 'auto' for all chunks
                     result = self.translate_text(chunk, detected_lang, target_lang)
-                    translated_chunks.append(result['translated_text'])
-                    print(f"Chunk {i+1} translated successfully (attempt {attempt + 1})")
-                    chunk_translated = True
-                    break
+                    print(f"Chunk {chunk_index + 1} translated successfully (attempt {attempt + 1})")
+                    return chunk_index, result['translated_text'], True
                 except Exception as e:
-                    print(f"Chunk {i+1} translation failed (attempt {attempt + 1}): {e}")
+                    print(f"Chunk {chunk_index + 1} translation failed (attempt {attempt + 1}): {e}")
                     if attempt < max_retries - 1:
                         # Shorter backoff: 1, 2, 3 seconds
                         wait_time = attempt + 1
-                        print(f"Retrying chunk {i+1} in {wait_time} seconds...")
+                        print(f"Retrying chunk {chunk_index + 1} in {wait_time} seconds...")
                         import time
                         time.sleep(wait_time)
             
-            if not chunk_translated:
-                print(f"Chunk {i+1} failed after {max_retries} attempts, using original text")
-                translated_chunks.append(chunk)
+            print(f"Chunk {chunk_index + 1} failed after {max_retries} attempts, using original text")
+            return chunk_index, chunk, False
+        
+        # Process chunks in parallel
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import time
+        
+        print(f"Starting parallel translation of {len(chunks)} chunks...")
+        start_time = time.time()
+        
+        translated_chunks = [None] * len(chunks)  # Pre-allocate list to maintain order
+        
+        # Use ThreadPoolExecutor for parallel processing
+        # Limit to 3 concurrent requests to avoid overwhelming the API
+        max_workers = min(3, len(chunks))
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all chunks for translation
+            future_to_chunk = {
+                executor.submit(translate_chunk_with_retry, (i, chunk)): i 
+                for i, chunk in enumerate(chunks)
+            }
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_chunk):
+                chunk_index, translated_text, success = future.result()
+                translated_chunks[chunk_index] = translated_text
+                
+                if success:
+                    print(f"✅ Chunk {chunk_index + 1} completed successfully")
+                else:
+                    print(f"❌ Chunk {chunk_index + 1} failed, using original text")
+        
+        end_time = time.time()
+        print(f"Parallel translation completed in {end_time - start_time:.2f} seconds")
         
         # Combine all translated chunks
         final_translation = "\n\n".join(translated_chunks)
