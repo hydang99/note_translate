@@ -25,5 +25,5 @@ EXPOSE 8000
 # Set Django settings module for production
 ENV DJANGO_SETTINGS_MODULE=note_translate.settings_production
 
-# Run migrations and start server directly (no cd needed since WORKDIR is already /app/backend)
-CMD ["sh", "-c", "python manage.py migrate && gunicorn note_translate.wsgi:application --bind 0.0.0.0:$PORT"]
+# Test Django startup first, then start server
+CMD ["sh", "-c", "echo 'Starting migrations...' && python manage.py migrate && echo 'Migrations completed. Testing Django...' && python manage.py check --deploy && echo 'Django check passed. Starting Gunicorn...' && gunicorn note_translate.wsgi:application --bind 0.0.0.0:$PORT --log-level debug"]
