@@ -244,7 +244,14 @@ class TranslationService:
         # Check if content is page-based JSON or plain text
         try:
             import json
+            print(f"Content type: {type(note.content)}")
+            print(f"Content length: {len(note.content) if note.content else 0}")
+            print(f"Content preview: {note.content[:500] if note.content else 'None'}")
+            
             pages_data = json.loads(note.content)
+            print(f"Parsed JSON successfully, type: {type(pages_data)}")
+            print(f"JSON length: {len(pages_data) if isinstance(pages_data, list) else 'Not a list'}")
+            
             if isinstance(pages_data, list) and len(pages_data) > 0 and 'page_number' in pages_data[0]:
                 # Page-based content - translate in batches to reduce API calls
                 translated_pages = []
@@ -308,8 +315,10 @@ class TranslationService:
                 )
                 translated_content = result['translated_text']
                 detected_language = result['detected_language']
-        except (json.JSONDecodeError, KeyError, TypeError):
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
             # Plain text content
+            print(f"JSON parsing failed: {e}")
+            print("Treating as plain text content")
             result = self.translate_text(
                 note.content,
                 note.source_language,
