@@ -247,12 +247,12 @@ class TranslationService:
             
             print("Sending translation request to AI...")
             
-            # Add generation configuration for better handling
+            # Add generation configuration similar to chatbot behavior
             generation_config = {
-                "temperature": 0,  # Low temperature for consistent translation
-                "top_p": 0.8,
+                "temperature": 0.1,  # Slightly higher for more natural translation
+                "top_p": 0.95,  # Higher diversity like chatbot
                 "top_k": 40,
-                "max_output_tokens": 65536,  # Ensure we can handle large responses
+                "max_output_tokens": 32768,  # Large but not excessive
             }
             
             response = model.generate_content(
@@ -461,14 +461,27 @@ class TranslationService:
             print("Treating as plain text content")
             print(f"About to translate {len(note.content)} characters of plain text")
             
-            # For large plain text, chunk it into smaller pieces
+            # Try direct translation first, fallback to chunking if it fails
             if len(note.content) > 10000:  # 10KB limit per chunk
-                print("Large text detected, chunking for translation")
-                translated_content, detected_language = self.translate_large_text(
-                    note.content,
-                    note.source_language,
-                    note.target_language
-                )
+                print("Large text detected, trying direct translation first...")
+                try:
+                    # Try to translate the entire text at once (like the chatbot does)
+                    result = self.translate_text(
+                        note.content,
+                        note.source_language,
+                        note.target_language
+                    )
+                    print("Direct translation successful!")
+                    translated_content = result['translated_text']
+                    detected_language = result['detected_language']
+                except Exception as direct_error:
+                    print(f"Direct translation failed: {direct_error}")
+                    print("Falling back to chunked translation...")
+                    translated_content, detected_language = self.translate_large_text(
+                        note.content,
+                        note.source_language,
+                        note.target_language
+                    )
             else:
                 try:
                     result = self.translate_text(
