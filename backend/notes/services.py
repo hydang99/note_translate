@@ -19,19 +19,28 @@ class NoteService:
     
     def extract_text_from_pdf(self, file_path):
         """Extract text from PDF file with better formatting preservation"""
+        print(f"Starting PDF text extraction from: {file_path}")
         try:
             # Always use AI Vision for better formatting preservation
-            return self.extract_text_from_pdf_with_vision(file_path)
+            print("Attempting AI Vision extraction...")
+            result = self.extract_text_from_pdf_with_vision(file_path)
+            print(f"AI Vision extraction successful, content length: {len(result) if result else 0}")
+            return result
         except Exception as e:
+            print(f"AI Vision extraction failed: {str(e)}")
             # Fallback to basic PyPDF2 if vision fails
             try:
+                print("Falling back to PyPDF2 extraction...")
                 with open(file_path, 'rb') as file:
                     pdf_reader = PyPDF2.PdfReader(file)
                     text = ""
                     for page in pdf_reader.pages:
                         text += page.extract_text() + "\n\n"
-                    return text.strip()
+                    result = text.strip()
+                    print(f"PyPDF2 extraction successful, content length: {len(result)}")
+                    return result
             except Exception as basic_error:
+                print(f"PyPDF2 fallback also failed: {str(basic_error)}")
                 raise Exception(f"Error extracting text from PDF: {str(e)}. Basic fallback also failed: {str(basic_error)}")
     
     def extract_text_from_pdf_with_vision(self, file_path):
@@ -42,8 +51,10 @@ class NoteService:
             import io
             import json
             
+            print(f"Opening PDF file: {file_path}")
             # Convert PDF to images
             doc = fitz.open(file_path)
+            print(f"PDF has {len(doc)} pages")
             pages_data = []
             
             for page_num in range(len(doc)):
