@@ -28,6 +28,10 @@ DATABASES = {
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
+# WhiteNoise configuration for serving static and media files
+WHITENOISE_USE_FINDERS = True
+WHITENOISE_AUTOREFRESH = True
+
 # Media files - Use Railway's persistent volume
 MEDIA_URL = '/media/'
 # Use Railway's persistent volume at /data for media files
