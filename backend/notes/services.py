@@ -249,6 +249,20 @@ class TranslationService:
         """Translate large text by chunking it into smaller pieces"""
         print(f"Translating large text: {len(text)} characters")
         
+        # Detect language once at the beginning
+        detected_lang = source_lang
+        if source_lang == 'auto':
+            print("Detecting language for large text...")
+            try:
+                # Use first chunk for language detection
+                first_chunk = text[:1000]  # Use first 1000 chars for detection
+                detection_result = self.translate_text(first_chunk, 'auto', target_lang)
+                detected_lang = detection_result['detected_language']
+                print(f"Detected language: {detected_lang}")
+            except Exception as e:
+                print(f"Language detection failed, using 'en' as default: {e}")
+                detected_lang = 'en'
+        
         # Split text into chunks of ~8000 characters (safe limit)
         chunk_size = 8000
         chunks = []
@@ -273,19 +287,34 @@ class TranslationService:
         translated_chunks = []
         for i, chunk in enumerate(chunks):
             print(f"Translating chunk {i+1}/{len(chunks)} ({len(chunk)} characters)")
-            try:
-                result = self.translate_text(chunk, source_lang, target_lang)
-                translated_chunks.append(result['translated_text'])
-                print(f"Chunk {i+1} translated successfully")
-            except Exception as e:
-                print(f"Chunk {i+1} translation failed: {e}")
-                # Add original chunk if translation fails
+            
+            # Retry logic for failed chunks
+            max_retries = 3
+            chunk_translated = False
+            
+            for attempt in range(max_retries):
+                try:
+                    # Use detected language instead of 'auto' for all chunks
+                    result = self.translate_text(chunk, detected_lang, target_lang)
+                    translated_chunks.append(result['translated_text'])
+                    print(f"Chunk {i+1} translated successfully (attempt {attempt + 1})")
+                    chunk_translated = True
+                    break
+                except Exception as e:
+                    print(f"Chunk {i+1} translation failed (attempt {attempt + 1}): {e}")
+                    if attempt < max_retries - 1:
+                        print(f"Retrying chunk {i+1} in 2 seconds...")
+                        import time
+                        time.sleep(2)  # Wait 2 seconds before retry
+            
+            if not chunk_translated:
+                print(f"Chunk {i+1} failed after {max_retries} attempts, using original text")
                 translated_chunks.append(chunk)
         
         # Combine all translated chunks
         final_translation = "\n\n".join(translated_chunks)
         print(f"Large text translation completed: {len(final_translation)} characters")
-        return final_translation
+        return final_translation, detected_lang
     
     def translate_note(self, note):
         """Translate a note and save the translation"""
@@ -378,12 +407,11 @@ class TranslationService:
             # For large plain text, chunk it into smaller pieces
             if len(note.content) > 10000:  # 10KB limit per chunk
                 print("Large text detected, chunking for translation")
-                translated_content = self.translate_large_text(
+                translated_content, detected_language = self.translate_large_text(
                     note.content,
                     note.source_language,
                     note.target_language
                 )
-                detected_language = "en"  # Assume English for now
             else:
                 try:
                     result = self.translate_text(
