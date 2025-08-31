@@ -26,5 +26,6 @@ ENV PYTHONUNBUFFERED=1
 # Expose port
 EXPOSE 8000
 
-# Run the startup script
-CMD ["/app/start.sh"]
+# Set working directory and run commands
+WORKDIR /app/backend
+CMD ["/bin/bash", "-c", "python manage.py migrate && gunicorn note_translate.wsgi:application --bind 0.0.0.0:$PORT"]
