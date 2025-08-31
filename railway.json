@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "sh -c 'export DJANGO_SETTINGS_MODULE=note_translate.settings_production && echo \"Starting migrations...\" && python3 manage.py migrate && echo \"Migrations completed, starting Gunicorn...\" && echo \"Port: $PORT\" && gunicorn note_translate.wsgi:application --bind 0.0.0.0:$PORT --timeout 1200 --worker-class sync --workers 2 --max-requests 1000 --max-requests-jitter 100 --log-level debug'",
+    "startCommand": "sh -c 'export DJANGO_SETTINGS_MODULE=note_translate.settings_production && echo \"Creating media directory...\" && mkdir -p /data/media && echo \"Starting migrations...\" && python3 manage.py migrate && echo \"Migrations completed, starting Gunicorn...\" && echo \"Port: $PORT\" && gunicorn note_translate.wsgi:application --bind 0.0.0.0:$PORT --timeout 600 --worker-class sync --workers 2 --max-requests 1000 --max-requests-jitter 100 --log-level debug'",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }

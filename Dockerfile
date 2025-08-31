@@ -25,5 +25,5 @@ EXPOSE 8000
 # Set Django settings module for production
 ENV DJANGO_SETTINGS_MODULE=note_translate.settings_production
 
-# Run migrations and start server with debugging
-CMD ["sh", "-c", "echo 'Starting migrations...' && python manage.py migrate && echo 'Migrations completed, starting Gunicorn...' && gunicorn note_translate.wsgi:application --bind 0.0.0.0:$PORT --log-level debug"]
+# Create persistent volume directory and run migrations and start server
+CMD ["sh", "-c", "echo 'Creating media directory...' && mkdir -p /data/media && echo 'Starting migrations...' && python manage.py migrate && echo 'Migrations completed, starting Gunicorn...' && gunicorn note_translate.wsgi:application --bind 0.0.0.0:$PORT --log-level debug"]
