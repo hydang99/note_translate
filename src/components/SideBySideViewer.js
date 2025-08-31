@@ -395,7 +395,7 @@ export default function SideBySideViewer({
     setIsLoadingDefinition(true);
     try {
       // Use AI to get definition and translation
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000/api'}/translation/define/`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/'}translation/define/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
