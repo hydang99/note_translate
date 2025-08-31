@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { vocabularyAPI, notesAPI } from '../services/api';
 import { BookMarked, Search, Filter, Trash2, Eye, ExternalLink, ArrowLeft, Clock } from 'lucide-react';
@@ -15,12 +15,33 @@ export default function Vocabulary() {
   const [availableNotes, setAvailableNotes] = useState([]);
   const [currentNote, setCurrentNote] = useState(null);
 
+  const fetchVocabulary = useCallback(async () => {
+    try {
+      const params = {};
+      if (searchTerm) params.search = searchTerm;
+      if (selectedLanguage) params.source_language = selectedLanguage;
+      if (selectedNote) params.source_note = selectedNote;
+
+      const response = await vocabularyAPI.getAll(params);
+      // Handle paginated response - data is in response.data.results
+      const items = Array.isArray(response.data.results) ? response.data.results : [];
+      setVocabularyItems(items);
+    } catch (error) {
+      console.error('Error fetching vocabulary:', error);
+      toast.error('Failed to load vocabulary');
+      // Set empty array on error to prevent map error
+      setVocabularyItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [searchTerm, selectedLanguage, selectedNote]);
+
   useEffect(() => {
     fetchVocabulary();
     fetchStats();
     fetchAvailableNotes();
     checkCurrentNote();
-  }, []);
+  }, [fetchVocabulary]);
 
   const checkCurrentNote = () => {
     // Check if there's a current note stored in localStorage
@@ -52,27 +73,6 @@ export default function Vocabulary() {
     localStorage.removeItem('currentNote');
     setCurrentNote(null);
     toast.success('Current note cleared');
-  };
-
-  const fetchVocabulary = async () => {
-    try {
-      const params = {};
-      if (searchTerm) params.search = searchTerm;
-      if (selectedLanguage) params.source_language = selectedLanguage;
-      if (selectedNote) params.source_note = selectedNote;
-
-      const response = await vocabularyAPI.getAll(params);
-      // Handle paginated response - data is in response.data.results
-      const items = Array.isArray(response.data.results) ? response.data.results : [];
-      setVocabularyItems(items);
-    } catch (error) {
-      console.error('Error fetching vocabulary:', error);
-      toast.error('Failed to load vocabulary');
-      // Set empty array on error to prevent map error
-      setVocabularyItems([]);
-    } finally {
-      setLoading(false);
-    }
   };
 
   const fetchStats = async () => {
@@ -126,7 +126,7 @@ export default function Vocabulary() {
     }, 300);
 
     return () => clearTimeout(delayedSearch);
-  }, [searchTerm, selectedLanguage, selectedNote]);
+  }, [searchTerm, selectedLanguage, selectedNote, fetchVocabulary]);
 
   if (loading) {
     return (

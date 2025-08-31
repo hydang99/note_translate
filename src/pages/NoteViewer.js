@@ -5,7 +5,7 @@ import { notesAPI } from '../services/api';
 import SideBySideViewer from '../components/SideBySideViewer';
 import LanguageSelector from '../components/LanguageSelector';
 import LoginPrompt from '../components/LoginPrompt';
-import { ArrowLeft, RefreshCw, Download, Trash2, Save, Edit3, BookOpen, FileDown } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Trash2, Save, Edit3, BookOpen, FileDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function NoteViewer() {
@@ -198,7 +198,7 @@ export default function NoteViewer() {
 
     setSaving(true);
     try {
-      const response = await notesAPI.update(note.id, {
+      await notesAPI.update(note.id, {
         title: newTitle.trim(),
         tags: newTags.trim()
       });
@@ -238,7 +238,7 @@ export default function NoteViewer() {
     setSaving(true);
     try {
       // Update the note with the edited content
-      const response = await notesAPI.update(note.id, {
+      await notesAPI.update(note.id, {
         content: editedOriginalContent.trim()
       });
       
