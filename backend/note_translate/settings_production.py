@@ -32,6 +32,13 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+# Timeout settings for large file processing
+FILE_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
+
+# Request timeout settings
+REQUEST_TIMEOUT = 300  # 5 minutes for translation requests
+
 # CORS settings for production
 CORS_ALLOWED_ORIGINS = [
     "https://web-production-4646.up.railway.app",
