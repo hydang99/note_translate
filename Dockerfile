@@ -1,4 +1,3 @@
-# Force rebuild - test simple container startup
 FROM python:3.9-slim
 
 # Install system dependencies
@@ -19,10 +18,12 @@ COPY . /app/
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
-ENV DJANGO_SETTINGS_MODULE=note_translate.settings_production
 
 # Expose port
 EXPOSE 8000
 
-# Simple test command to see if container can start
-CMD ["sh", "-c", "echo 'Container started successfully' && sleep 30"]
+# Set Django settings module for production
+ENV DJANGO_SETTINGS_MODULE=note_translate.settings_production
+
+# Run migrations and start server with debugging
+CMD ["sh", "-c", "echo 'Starting migrations...' && python manage.py migrate && echo 'Migrations completed, starting Gunicorn...' && gunicorn note_translate.wsgi:application --bind 0.0.0.0:$PORT --log-level debug"]

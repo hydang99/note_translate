@@ -6,13 +6,22 @@ DEBUG = False
 
 # Security settings
 SECRET_KEY = os.getenv('SECRET_KEY')
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
+if not SECRET_KEY:
+    raise ValueError("SECRET_KEY environment variable is required")
+
+ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS', '').split(',') if host.strip()]
+if not ALLOWED_HOSTS:
+    ALLOWED_HOSTS = ['*']  # Fallback for development
 
 # Database - PostgreSQL for production
 import dj_database_url
 
+DATABASE_URL = os.getenv('DATABASE_URL')
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is required")
+
 DATABASES = {
-    'default': dj_database_url.parse(os.getenv('DATABASE_URL'))
+    'default': dj_database_url.parse(DATABASE_URL)
 }
 
 # Static files
