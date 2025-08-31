@@ -197,6 +197,7 @@ class TranslationService:
         if not note.content:
             raise Exception("Note has no content to translate")
         
+        print(f"Starting translation for note {note.id} - {note.title}")
         detected_language = None
         
         # Check if content is page-based JSON or plain text
@@ -204,21 +205,57 @@ class TranslationService:
             import json
             pages_data = json.loads(note.content)
             if isinstance(pages_data, list) and len(pages_data) > 0 and 'page_number' in pages_data[0]:
-                # Page-based content - translate each page
+                # Page-based content - translate in batches to reduce API calls
                 translated_pages = []
-                for page_data in pages_data:
+                
+                # For large documents, translate in batches of 3-5 pages
+                batch_size = 3 if len(pages_data) > 10 else 5
+                total_batches = (len(pages_data) + batch_size - 1) // batch_size
+                print(f"Translating {len(pages_data)} pages in {total_batches} batches of {batch_size}")
+                
+                for i in range(0, len(pages_data), batch_size):
+                    batch = pages_data[i:i + batch_size]
+                    batch_num = (i // batch_size) + 1
+                    print(f"Processing batch {batch_num}/{total_batches} (pages {i+1}-{min(i+batch_size, len(pages_data))})")
+                    
+                    # Combine batch content with page markers
+                    batch_content = ""
+                    for page_data in batch:
+                        batch_content += f"\n\n--- PAGE {page_data['page_number']} ---\n\n"
+                        batch_content += page_data['content']
+                    
+                    # Translate the batch
+                    print(f"Translating batch {batch_num} ({len(batch_content)} characters)")
                     result = self.translate_text(
-                        page_data['content'],
+                        batch_content,
                         note.source_language,
                         note.target_language
                     )
-                    translated_pages.append({
-                        'page_number': page_data['page_number'],
-                        'content': result['translated_text']
-                    })
-                    # Use the detected language from the first page
+                    print(f"Batch {batch_num} translation completed")
+                    
+                    # Use the detected language from the first batch
                     if detected_language is None:
                         detected_language = result['detected_language']
+                    
+                    # Split the translated batch back into pages
+                    translated_batch = result['translated_text']
+                    page_sections = translated_batch.split('--- PAGE')
+                    
+                    for j, page_data in enumerate(batch):
+                        if j + 1 < len(page_sections):
+                            # Extract content for this page
+                            page_content = page_sections[j + 1].split('---')[0].strip()
+                            translated_pages.append({
+                                'page_number': page_data['page_number'],
+                                'content': page_content
+                            })
+                        else:
+                            # Fallback: use the original content if splitting failed
+                            translated_pages.append({
+                                'page_number': page_data['page_number'],
+                                'content': page_data['content']
+                            })
+                
                 translated_content = json.dumps(translated_pages)
             else:
                 # Plain text content
