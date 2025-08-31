@@ -92,7 +92,20 @@ Extract and format the text with proper markdown structure:""",
                     img
                 ])
                 
-                page_text = response.text if response.text else ""
+                # Handle different response formats
+                try:
+                    page_text = response.text
+                except Exception as text_error:
+                    print(f"Error accessing response.text: {text_error}")
+                    # Try alternative access methods
+                    if hasattr(response, 'parts') and response.parts:
+                        page_text = response.parts[0].text
+                    elif hasattr(response, 'candidates') and response.candidates:
+                        page_text = response.candidates[0].content.parts[0].text
+                    else:
+                        raise Exception(f"Could not extract text from response: {text_error}")
+                
+                page_text = page_text if page_text else ""
                 pages_data.append({
                     'page_number': page_num + 1,
                     'content': page_text
@@ -240,6 +253,7 @@ class TranslationService:
                 batch_size = 3 if len(pages_data) > 10 else 5
                 total_batches = (len(pages_data) + batch_size - 1) // batch_size
                 print(f"Translating {len(pages_data)} pages in {total_batches} batches of {batch_size}")
+                print(f"Content preview: {note.content[:200]}...")
                 
                 for i in range(0, len(pages_data), batch_size):
                     batch = pages_data[i:i + batch_size]
