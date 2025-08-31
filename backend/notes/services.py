@@ -245,6 +245,48 @@ class TranslationService:
         except Exception as e:
             raise Exception(f"Translation failed: {str(e)}")
     
+    def translate_large_text(self, text, source_lang='auto', target_lang='vi'):
+        """Translate large text by chunking it into smaller pieces"""
+        print(f"Translating large text: {len(text)} characters")
+        
+        # Split text into chunks of ~8000 characters (safe limit)
+        chunk_size = 8000
+        chunks = []
+        
+        # Split by paragraphs first, then by sentences if needed
+        paragraphs = text.split('\n\n')
+        current_chunk = ""
+        
+        for paragraph in paragraphs:
+            if len(current_chunk) + len(paragraph) < chunk_size:
+                current_chunk += paragraph + "\n\n"
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                current_chunk = paragraph + "\n\n"
+        
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+        
+        print(f"Split into {len(chunks)} chunks")
+        
+        translated_chunks = []
+        for i, chunk in enumerate(chunks):
+            print(f"Translating chunk {i+1}/{len(chunks)} ({len(chunk)} characters)")
+            try:
+                result = self.translate_text(chunk, source_lang, target_lang)
+                translated_chunks.append(result['translated_text'])
+                print(f"Chunk {i+1} translated successfully")
+            except Exception as e:
+                print(f"Chunk {i+1} translation failed: {e}")
+                # Add original chunk if translation fails
+                translated_chunks.append(chunk)
+        
+        # Combine all translated chunks
+        final_translation = "\n\n".join(translated_chunks)
+        print(f"Large text translation completed: {len(final_translation)} characters")
+        return final_translation
+    
     def translate_note(self, note):
         """Translate a note and save the translation"""
         if not note.content:
@@ -332,18 +374,29 @@ class TranslationService:
             print(f"JSON parsing failed: {e}")
             print("Treating as plain text content")
             print(f"About to translate {len(note.content)} characters of plain text")
-            try:
-                result = self.translate_text(
+            
+            # For large plain text, chunk it into smaller pieces
+            if len(note.content) > 10000:  # 10KB limit per chunk
+                print("Large text detected, chunking for translation")
+                translated_content = self.translate_large_text(
                     note.content,
                     note.source_language,
                     note.target_language
                 )
-                print("Translation completed successfully")
-                translated_content = result['translated_text']
-                detected_language = result['detected_language']
-            except Exception as translate_error:
-                print(f"Translation failed: {translate_error}")
-                raise translate_error
+                detected_language = "en"  # Assume English for now
+            else:
+                try:
+                    result = self.translate_text(
+                        note.content,
+                        note.source_language,
+                        note.target_language
+                    )
+                    print("Translation completed successfully")
+                    translated_content = result['translated_text']
+                    detected_language = result['detected_language']
+                except Exception as translate_error:
+                    print(f"Translation failed: {translate_error}")
+                    raise translate_error
         
         # Update the note with detected language
         if detected_language and note.source_language == 'auto':
