@@ -16,6 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the entire project
 COPY . .
 
+# Make the startup script executable
+RUN chmod +x /app/start.sh
+
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
@@ -23,5 +26,5 @@ ENV PYTHONUNBUFFERED=1
 # Expose port
 EXPOSE 8000
 
-# Run migrations and start the server
-CMD ["sh", "-c", "cd backend && python manage.py migrate && gunicorn note_translate.wsgi:application --bind 0.0.0.0:$PORT"]
+# Run the startup script
+CMD ["/app/start.sh"]
