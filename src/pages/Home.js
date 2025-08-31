@@ -17,6 +17,11 @@ export default function Home() {
   const [targetLanguage, setTargetLanguage] = useState('vi');
   const [isUploading, setIsUploading] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({
+    stage: '', // 'uploading', 'extracting', 'translating', 'complete'
+    message: '',
+    progress: 0
+  });
 
   const [currentNote, setCurrentNote] = useState(null);
 
@@ -78,10 +83,22 @@ export default function Home() {
     // They'll be prompted to login when trying to save
 
     setIsUploading(true);
+    setUploadProgress({
+      stage: 'uploading',
+      message: 'Preparing upload...',
+      progress: 10
+    });
+
     try {
       const formData = new FormData();
       
       if (selectedFile) {
+        setUploadProgress({
+          stage: 'uploading',
+          message: 'Processing file...',
+          progress: 20
+        });
+
         formData.append('file', selectedFile);
         // Determine file type based on extension and MIME type
         let fileType = 'txt';
@@ -107,21 +124,31 @@ export default function Home() {
       formData.append('source_language', sourceLanguage);
       formData.append('target_language', targetLanguage);
 
-      // Debug: Log FormData contents
-      console.log('FormData contents:');
-      for (let [key, value] of formData.entries()) {
-        console.log(key, value);
-      }
-      console.log('Selected file:', selectedFile);
-      console.log('Text content:', textContent);
+      setUploadProgress({
+        stage: 'uploading',
+        message: 'Uploading to server...',
+        progress: 40
+      });
 
       const response = await notesAPI.create(formData);
       const note = response.data;
       
+      setUploadProgress({
+        stage: 'extracting',
+        message: 'Extracting text from document...',
+        progress: 60
+      });
+
       toast.success('Note uploaded successfully!');
       
       // Automatically translate the note
       setIsTranslating(true);
+      setUploadProgress({
+        stage: 'translating',
+        message: 'Translating content...',
+        progress: 80
+      });
+
       try {
         const translateResponse = await notesAPI.translate(note.id);
         const updatedNote = {
@@ -129,11 +156,26 @@ export default function Home() {
           translation: translateResponse.data
         };
         
+        setUploadProgress({
+          stage: 'complete',
+          message: 'Translation complete!',
+          progress: 100
+        });
+
         toast.success('Translation completed!');
+        
+        // Small delay to show completion
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         // Navigate to the note with translation already loaded
         navigate(`/notes/${note.id}`, { state: { note: updatedNote } });
       } catch (translateError) {
         console.error('Translation error:', translateError);
+        setUploadProgress({
+          stage: 'error',
+          message: 'Translation failed',
+          progress: 0
+        });
         toast.error('Upload successful, but translation failed. You can translate manually.');
         // Still navigate to the note, but without translation
         navigate(`/notes/${note.id}`);
@@ -142,9 +184,22 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Upload error:', error);
+      setUploadProgress({
+        stage: 'error',
+        message: 'Upload failed',
+        progress: 0
+      });
       toast.error('Failed to upload note');
     } finally {
       setIsUploading(false);
+      // Reset progress after a delay
+      setTimeout(() => {
+        setUploadProgress({
+          stage: '',
+          message: '',
+          progress: 0
+        });
+      }, 2000);
     }
   };
 
@@ -268,6 +323,39 @@ export default function Home() {
               excludeAuto={true}
             />
           </div>
+
+          {/* Progress Indicator */}
+          {(isUploading || isTranslating) && uploadProgress.stage && (
+            <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">
+                  {uploadProgress.message}
+                </span>
+                <span className="text-sm text-gray-500">
+                  {uploadProgress.progress}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className={`h-2 rounded-full transition-all duration-300 ${
+                    uploadProgress.stage === 'error' 
+                      ? 'bg-red-500' 
+                      : uploadProgress.stage === 'complete'
+                      ? 'bg-green-500'
+                      : 'bg-primary-500'
+                  }`}
+                  style={{ width: `${uploadProgress.progress}%` }}
+                ></div>
+              </div>
+              <div className="mt-2 text-xs text-gray-500">
+                {uploadProgress.stage === 'uploading' && 'Uploading your file to the server...'}
+                {uploadProgress.stage === 'extracting' && 'Using AI to extract text from your document...'}
+                {uploadProgress.stage === 'translating' && 'Translating content to your target language...'}
+                {uploadProgress.stage === 'complete' && 'All done! Redirecting to your note...'}
+                {uploadProgress.stage === 'error' && 'Something went wrong. Please try again.'}
+              </div>
+            </div>
+          )}
 
           <button
             onClick={handleUpload}

@@ -59,18 +59,22 @@ class NoteService:
             print(f"PDF has {len(doc)} pages")
             pages_data = []
             
-            for page_num in range(len(doc)):
-                page = doc.load_page(page_num)
-                # Convert page to image
-                mat = fitz.Matrix(2, 2)  # 2x zoom for better quality
-                pix = page.get_pixmap(matrix=mat)
-                img_data = pix.tobytes("png")
-                img = Image.open(io.BytesIO(img_data))
+            # Function to process a single page
+            def process_page(page_data):
+                page_num, page = page_data
+                print(f"Processing page {page_num + 1}/{len(doc)}")
                 
-                # Use AI Vision to extract text with proper sentence formatting
-                model = genai.GenerativeModel('gemini-2.5-flash')
-                response = model.generate_content([
-                    """Extract all text from this PDF page and format it as proper, readable text.
+                try:
+                    # Convert page to image
+                    mat = fitz.Matrix(2, 2)  # 2x zoom for better quality
+                    pix = page.get_pixmap(matrix=mat)
+                    img_data = pix.tobytes("png")
+                    img = Image.open(io.BytesIO(img_data))
+                    
+                    # Use AI Vision to extract text with proper sentence formatting
+                    model = genai.GenerativeModel('gemini-2.5-flash')
+                    response = model.generate_content([
+                        """Extract all text from this PDF page and format it as proper, readable text.
 
 CRITICAL FORMATTING RULES:
 1. **Preserve complete sentences** - do not break sentences into individual words
@@ -84,27 +88,68 @@ CRITICAL FORMATTING RULES:
 IMPORTANT: Return the text as it would appear in a well-formatted document, with complete sentences and proper paragraph breaks. Do not return individual words on separate lines.
 
 Extract the text maintaining proper sentence structure and formatting:""",
-                    img
-                ])
+                        img
+                    ])
+                    
+                    # Handle different response formats
+                    try:
+                        page_text = response.text
+                    except Exception as text_error:
+                        print(f"Error accessing response.text for page {page_num + 1}: {text_error}")
+                        # Try alternative access methods
+                        if hasattr(response, 'parts') and response.parts:
+                            page_text = response.parts[0].text
+                        elif hasattr(response, 'candidates') and response.candidates:
+                            page_text = response.candidates[0].content.parts[0].text
+                        else:
+                            raise Exception(f"Could not extract text from response: {text_error}")
+                    
+                    page_text = page_text if page_text else ""
+                    print(f"✅ Page {page_num + 1} processed successfully ({len(page_text)} characters)")
+                    
+                    return page_num, {
+                        'page_number': page_num + 1,
+                        'content': page_text
+                    }
+                    
+                except Exception as e:
+                    print(f"❌ Page {page_num + 1} processing failed: {e}")
+                    return page_num, {
+                        'page_number': page_num + 1,
+                        'content': f"[Error processing page {page_num + 1}: {str(e)}]"
+                    }
+            
+            # Process pages in parallel for better performance
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            import time
+            
+            print(f"Starting parallel processing of {len(doc)} pages...")
+            start_time = time.time()
+            
+            pages_data = [None] * len(doc)  # Pre-allocate list to maintain order
+            
+            # Use ThreadPoolExecutor for parallel processing
+            # Limit to 3 concurrent requests to avoid overwhelming the API
+            max_workers = min(3, len(doc))
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit all pages for processing
+                future_to_page = {
+                    executor.submit(process_page, (page_num, doc.load_page(page_num))): page_num 
+                    for page_num in range(len(doc))
+                }
                 
-                # Handle different response formats
-                try:
-                    page_text = response.text
-                except Exception as text_error:
-                    print(f"Error accessing response.text: {text_error}")
-                    # Try alternative access methods
-                    if hasattr(response, 'parts') and response.parts:
-                        page_text = response.parts[0].text
-                    elif hasattr(response, 'candidates') and response.candidates:
-                        page_text = response.candidates[0].content.parts[0].text
-                    else:
-                        raise Exception(f"Could not extract text from response: {text_error}")
-                
-                page_text = page_text if page_text else ""
-                pages_data.append({
-                    'page_number': page_num + 1,
-                    'content': page_text
-                })
+                # Collect results as they complete
+                for future in as_completed(future_to_page):
+                    page_num, page_data = future.result()
+                    pages_data[page_num] = page_data
+            
+            end_time = time.time()
+            print(f"Parallel page processing completed in {end_time - start_time:.2f} seconds")
+            
+            # Remove None values and sort by page number
+            pages_data = [page for page in pages_data if page is not None]
+            pages_data.sort(key=lambda x: x['page_number'])
             
             doc.close()
             
