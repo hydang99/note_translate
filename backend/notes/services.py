@@ -203,14 +203,9 @@ class TranslationService:
         print(f"Text cleaned, length: {len(cleaned_text)}")
         
         try:
-            # Try different model configurations for better reliability
-            try:
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                print("AI model (gemini-1.5-flash) initialized successfully")
-            except Exception as model_error:
-                print(f"Failed to initialize gemini-1.5-flash: {model_error}")
-                model = genai.GenerativeModel('gemini-2.5-flash')
-                print("AI model (gemini-2.5-flash) initialized successfully")
+            # Use gemini-2.5-flash consistently
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            print("AI model (gemini-2.5-flash) initialized successfully")
             
             detected_lang = source_lang
             
@@ -484,7 +479,7 @@ class TranslationService:
             translation.translation_metadata.update({
                 'source_language': note.source_language,
                 'target_language': note.target_language,
-                'model_used': 'gemini-2.5-flash'
+                'model_used': 'ai-translation'
             })
             translation.save()
         
