@@ -55,6 +55,16 @@ CORS_ALLOWED_ORIGINS = [
     "https://note-translate.vercel.app",  # Vercel custom domain
     "http://localhost:3000",  # For local development
 ]
+CORS_ALLOW_ALL_ORIGINS = False  # Explicitly set to False for production
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
 
 # Security settings
 SECURE_BROWSER_XSS_FILTER = True
