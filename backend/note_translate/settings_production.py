@@ -39,6 +39,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://note-translate-gpqbikl97-hy-dangs-projects-9554bf41.vercel.app",  # New Vercel deployment
     "https://note-translate-1q5s2uu1z-hy-dangs-projects-9554bf41.vercel.app",  # Latest Vercel deployment
     "https://note-translate-hjj84a8fc-hy-dangs-projects-9554bf41.vercel.app",  # Fresh Vercel deployment
+    "https://note-translate-ni1icez72-hy-dangs-projects-9554bf41.vercel.app",  # Latest Vercel deployment
     "https://note-translate.vercel.app",  # Vercel custom domain
     "http://localhost:3000",  # For local development
 ]
