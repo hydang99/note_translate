@@ -42,10 +42,10 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100MB
 
 # Request timeout settings
-REQUEST_TIMEOUT = 600  # 10 minutes for translation requests
+REQUEST_TIMEOUT = 1200  # 20 minutes for translation requests
 
 # Additional timeout settings for Railway
-TIMEOUT = 600  # 10 minutes
+TIMEOUT = 1200  # 20 minutes
 
 # CORS settings for production
 CORS_ALLOWED_ORIGINS = [
