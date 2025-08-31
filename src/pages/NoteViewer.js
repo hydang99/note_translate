@@ -122,7 +122,8 @@ export default function NoteViewer() {
 
     try {
       // Construct the full URL for the file
-      const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+      // Remove /api from the base URL since media files are served directly
+      const baseUrl = (process.env.REACT_APP_API_URL || 'http://localhost:8000').replace('/api', '');
       const fileUrl = `${baseUrl}${note.file}`;
       
       // Create a download link for the original file
