@@ -71,6 +71,7 @@ export const notesAPI = {
   updateLastViewedPage: (id, page) => api.patch(`/notes/${id}/update_last_viewed_page/`, { page }),
   reExtractText: (id) => api.post(`/notes/${id}/re_extract_text/`),
   getRecent: () => api.get('/notes/recent/'),
+  getProgress: (id) => api.get(`/notes/${id}/progress/`),
 };
 
 // Vocabulary API

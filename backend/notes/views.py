@@ -7,6 +7,7 @@ from django.db import models
 from .models import Note, Translation
 from .serializers import NoteSerializer, NoteCreateSerializer, TranslationSerializer
 from .services import NoteService, TranslationService
+import json
 
 
 class NoteViewSet(viewsets.ModelViewSet):
@@ -141,6 +142,39 @@ class NoteViewSet(viewsets.ModelViewSet):
         note.save()
         
         return Response({'status': 'success'})
+    
+    @action(detail=True, methods=['get'])
+    def progress(self, request, pk=None):
+        """Get progress information for a note's processing"""
+        note = self.get_object()
+        
+        # Try to determine page count from content
+        total_pages = 0
+        current_page = 0
+        
+        if note.content:
+            try:
+                # Check if content is JSON (page-based structure)
+                if note.content.startswith('[') or note.content.startswith('{'):
+                    pages_data = json.loads(note.content)
+                    if isinstance(pages_data, list):
+                        total_pages = len(pages_data)
+                    elif isinstance(pages_data, dict) and 'page_number' in pages_data:
+                        total_pages = 1
+            except:
+                # If not JSON, assume it's plain text (1 page)
+                total_pages = 1
+        
+        # Check if there's a translation in progress
+        has_translation = hasattr(note, 'translation') and note.translation is not None
+        
+        return Response({
+            'note_id': note.id,
+            'total_pages': total_pages,
+            'current_page': current_page,
+            'has_translation': has_translation,
+            'is_processing': False  # For now, we don't have real-time processing status
+        })
     
     @action(detail=True, methods=['post'])
     def re_extract_text(self, request, pk=None):

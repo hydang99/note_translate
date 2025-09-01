@@ -20,7 +20,9 @@ export default function Home() {
   const [uploadProgress, setUploadProgress] = useState({
     stage: '', // 'uploading', 'extracting', 'translating', 'complete'
     message: '',
-    progress: 0
+    progress: 0,
+    currentPage: 0,
+    totalPages: 0
   });
 
   const [currentNote, setCurrentNote] = useState(null);
@@ -86,9 +88,10 @@ export default function Home() {
     setUploadProgress({
       stage: 'uploading',
       message: 'Preparing upload...',
-      progress: 10
+      progress: 10,
+      currentPage: 0,
+      totalPages: 0
     });
-    console.log('Progress set:', { stage: 'uploading', message: 'Preparing upload...', progress: 10 });
 
     try {
       const formData = new FormData();
@@ -97,7 +100,9 @@ export default function Home() {
         setUploadProgress({
           stage: 'uploading',
           message: 'Processing file...',
-          progress: 20
+          progress: 20,
+          currentPage: 0,
+          totalPages: 0
         });
 
         formData.append('file', selectedFile);
@@ -128,30 +133,64 @@ export default function Home() {
       setUploadProgress({
         stage: 'uploading',
         message: 'Uploading to server...',
-        progress: 40
+        progress: 40,
+        currentPage: 0,
+        totalPages: 0
       });
-      console.log('Progress updated to 40% - Uploading to server');
 
       const response = await notesAPI.create(formData);
       const note = response.data;
       
-      setUploadProgress({
-        stage: 'extracting',
-        message: 'Extracting text from document...',
-        progress: 60
-      });
-      console.log('Progress updated to 60% - Extracting text');
+      // Get progress information from the backend
+      try {
+        const progressResponse = await notesAPI.getProgress(note.id);
+        const progressData = progressResponse.data;
+        
+        setUploadProgress({
+          stage: 'extracting',
+          message: 'Extracting text from document...',
+          progress: 60,
+          currentPage: progressData.current_page || 0,
+          totalPages: progressData.total_pages || 0
+        });
+      } catch (error) {
+        console.log('Could not get progress info:', error);
+        setUploadProgress({
+          stage: 'extracting',
+          message: 'Extracting text from document...',
+          progress: 60,
+          currentPage: 0,
+          totalPages: 0
+        });
+      }
 
       toast.success('Note uploaded successfully!');
       
       // Automatically translate the note
       setIsTranslating(true);
-      setUploadProgress({
-        stage: 'translating',
-        message: 'Translating content...',
-        progress: 80
-      });
-      console.log('Progress updated to 80% - Translating content');
+      
+      // Get updated progress information before translation
+      try {
+        const progressResponse = await notesAPI.getProgress(note.id);
+        const progressData = progressResponse.data;
+        
+        setUploadProgress({
+          stage: 'translating',
+          message: 'Translating content...',
+          progress: 80,
+          currentPage: progressData.current_page || 0,
+          totalPages: progressData.total_pages || 0
+        });
+      } catch (error) {
+        console.log('Could not get progress info for translation:', error);
+        setUploadProgress({
+          stage: 'translating',
+          message: 'Translating content...',
+          progress: 80,
+          currentPage: 0,
+          totalPages: 0
+        });
+      }
 
       try {
         const translateResponse = await notesAPI.translate(note.id);
@@ -163,7 +202,9 @@ export default function Home() {
         setUploadProgress({
           stage: 'complete',
           message: 'Translation complete!',
-          progress: 100
+          progress: 100,
+          currentPage: 0,
+          totalPages: 0
         });
 
         toast.success('Translation completed!');
@@ -178,7 +219,9 @@ export default function Home() {
         setUploadProgress({
           stage: 'error',
           message: 'Translation failed',
-          progress: 0
+          progress: 0,
+          currentPage: 0,
+          totalPages: 0
         });
         toast.error('Upload successful, but translation failed. You can translate manually.');
         // Still navigate to the note, but without translation
@@ -191,7 +234,9 @@ export default function Home() {
       setUploadProgress({
         stage: 'error',
         message: 'Upload failed',
-        progress: 0
+        progress: 0,
+        currentPage: 0,
+        totalPages: 0
       });
       toast.error('Failed to upload note');
     } finally {
@@ -201,7 +246,9 @@ export default function Home() {
         setUploadProgress({
           stage: '',
           message: '',
-          progress: 0
+          progress: 0,
+          currentPage: 0,
+          totalPages: 0
         });
       }, 2000);
     }
@@ -328,17 +375,19 @@ export default function Home() {
             />
           </div>
 
-          {/* Debug Info - Vercel Test - FORCE DEPLOY */}
-          <div className="mt-4 p-2 bg-red-100 border-2 border-red-400 rounded text-sm font-bold">
-            🚨 FORCE DEPLOY TEST - DEBUG: isUploading={isUploading.toString()}, isTranslating={isTranslating.toString()}, stage={uploadProgress.stage}, progress={uploadProgress.progress}
-          </div>
+
 
           {/* Progress Indicator */}
           {(isUploading || isTranslating) && (
             <div className="mt-6 bg-blue-100 border-2 border-blue-300 rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-700">
-                  🚀 PROGRESS: {uploadProgress.message || (isUploading ? 'Uploading...' : 'Translating...')}
+                  {uploadProgress.stage === 'extracting' && uploadProgress.totalPages > 0 
+                    ? `📄 Extracting page ${uploadProgress.currentPage} of ${uploadProgress.totalPages}...`
+                    : uploadProgress.stage === 'translating' && uploadProgress.totalPages > 0
+                    ? `🔄 Translating (${uploadProgress.currentPage} of ${uploadProgress.totalPages} pages)...`
+                    : `🚀 ${uploadProgress.message || (isUploading ? 'Uploading...' : 'Translating...')}`
+                  }
                 </span>
                 <span className="text-sm text-gray-500">
                   {uploadProgress.progress || 0}%
@@ -358,8 +407,18 @@ export default function Home() {
               </div>
               <div className="mt-2 text-xs text-gray-500">
                 {uploadProgress.stage === 'uploading' && 'Uploading your file to the server...'}
-                {uploadProgress.stage === 'extracting' && 'Using AI to extract text from your document...'}
-                {uploadProgress.stage === 'translating' && 'Translating content to your target language...'}
+                {uploadProgress.stage === 'extracting' && uploadProgress.totalPages > 0 && 
+                  `Using AI to extract text from page ${uploadProgress.currentPage} of ${uploadProgress.totalPages}...`
+                }
+                {uploadProgress.stage === 'extracting' && uploadProgress.totalPages === 0 && 
+                  'Using AI to extract text from your document...'
+                }
+                {uploadProgress.stage === 'translating' && uploadProgress.totalPages > 0 && 
+                  `Translating page ${uploadProgress.currentPage} of ${uploadProgress.totalPages} to your target language...`
+                }
+                {uploadProgress.stage === 'translating' && uploadProgress.totalPages === 0 && 
+                  'Translating content to your target language...'
+                }
                 {uploadProgress.stage === 'complete' && 'All done! Redirecting to your note...'}
                 {uploadProgress.stage === 'error' && 'Something went wrong. Please try again.'}
                 {!uploadProgress.stage && isUploading && 'Preparing your upload...'}
