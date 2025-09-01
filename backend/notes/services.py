@@ -177,11 +177,6 @@ Extract the text maintaining proper sentence structure and formatting:""",
                 batch_end = min(batch_start + batch_size, len(doc))
                 print(f"Processing batch {batch_start//batch_size + 1}/{(len(doc) + batch_size - 1)//batch_size} (pages {batch_start + 1}-{batch_end})")
                 
-                # Check if processing was cancelled
-                if hasattr(note, 'processing_cancelled') and note.processing_cancelled:
-                    print(f"⚠️  Processing cancelled during batch {batch_start//batch_size + 1}")
-                    raise Exception("Processing was cancelled by user")
-                
                 # Check memory before processing batch - Railway Hobby plan has 8GB RAM
                 if not self.check_memory_limit(1500):  # 1.5GB limit for Railway
                     print(f"⚠️  Memory limit exceeded, forcing cleanup before batch {batch_start//batch_size + 1}")
@@ -262,11 +257,6 @@ Extract the text maintaining proper sentence structure and formatting:""",
         if not self.check_memory_limit(1000):  # 1GB initial limit for Railway
             print("⚠️  High memory usage detected at start, forcing cleanup")
             gc.collect()
-        
-        # Check if processing was cancelled
-        if hasattr(note, 'processing_cancelled') and note.processing_cancelled:
-            print(f"⚠️  Processing cancelled for note {note.id}")
-            raise Exception("Processing was cancelled by user")
         
         if not note.file:
             print("No file attached to note")
@@ -530,11 +520,6 @@ class TranslationService:
         """Translate a note and save the translation"""
         if not note.content:
             raise Exception("Note has no content to translate")
-        
-        # Check if processing was cancelled
-        if hasattr(note, 'processing_cancelled') and note.processing_cancelled:
-            print(f"⚠️  Translation cancelled for note {note.id}")
-            raise Exception("Translation was cancelled by user")
         
         print(f"Starting translation for note {note.id} - {note.title}")
         print(f"Content type: {type(note.content)}")

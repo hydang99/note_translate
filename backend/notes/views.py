@@ -156,36 +156,6 @@ class NoteViewSet(viewsets.ModelViewSet):
         
         return Response({'status': 'success'})
     
-    @action(detail=True, methods=['post'])
-    def cancel_processing(self, request, pk=None):
-        """Cancel ongoing file processing or translation"""
-        try:
-            note = self.get_object()
-            print(f"Cancelling processing for note {note.id} - {note.title}")
-            
-            # Set a cancellation flag in the note
-            note.processing_cancelled = True
-            note.save()
-            
-            # Also cancel any ongoing translation
-            if hasattr(note, 'translation') and note.translation:
-                note.translation.processing_cancelled = True
-                note.translation.save()
-                print(f"Cancelled translation for note {note.id}")
-            
-            return Response({
-                'status': 'cancelled',
-                'message': 'Processing cancelled successfully',
-                'note_id': note.id
-            })
-            
-        except Exception as e:
-            print(f"Error cancelling processing: {e}")
-            return Response(
-                {'error': f'Failed to cancel processing: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-    
     @action(detail=True, methods=['get'])
     def progress(self, request, pk=None):
         """Get progress information for a note's processing"""
