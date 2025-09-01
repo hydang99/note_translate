@@ -652,8 +652,8 @@ export default function SideBySideViewer({
         const textIndex = fullTextLower.indexOf(selectedTextLower);
         
         if (textIndex !== -1) {
-          // Extract context around the selected word (about 300-400 characters)
-          const contextLength = 200; // Characters before and after
+          // Extract context around the selected word (300-500 characters BEFORE AND AFTER)
+          const contextLength = 400; // Characters before and after (400 + 400 = 800 total, plus word length)
           const startIndex = Math.max(0, textIndex - contextLength);
           const endIndex = Math.min(fullText.length, textIndex + text.length + contextLength);
           
@@ -688,17 +688,22 @@ export default function SideBySideViewer({
           if (contextText && contextText.trim().length > 0) {
             if (contextText.includes(text)) {
               contextSentence = contextText.trim();
+              const beforeWord = contextText.substring(0, contextText.indexOf(text));
+              const afterWord = contextText.substring(contextText.indexOf(text) + text.length);
               console.log(`✅ Context extracted successfully: "${text}" found in context`);
+              console.log(`📏 Characters before word: ${beforeWord.length}`);
+              console.log(`📏 Characters after word: ${afterWord.length}`);
+              console.log(`📏 Total context length: ${contextSentence.length}`);
             } else {
               console.log('❌ Selected word still not in context after processing');
-              // Fallback: use a smaller context that definitely includes the word
-              const wordIndex = fullText.indexOf(text);
-              if (wordIndex !== -1) {
-                const fallbackStart = Math.max(0, wordIndex - 100);
-                const fallbackEnd = Math.min(fullText.length, wordIndex + text.length + 100);
-                contextSentence = fullText.substring(fallbackStart, fallbackEnd).trim();
-                console.log('🔄 Using fallback context extraction');
-              }
+                             // Fallback: use a smaller context that definitely includes the word
+               const wordIndex = fullText.indexOf(text);
+               if (wordIndex !== -1) {
+                 const fallbackStart = Math.max(0, wordIndex - 300);
+                 const fallbackEnd = Math.min(fullText.length, wordIndex + text.length + 300);
+                 contextSentence = fullText.substring(fallbackStart, fallbackEnd).trim();
+                 console.log('🔄 Using fallback context extraction (300 chars before/after)');
+               }
             }
           }
         }
