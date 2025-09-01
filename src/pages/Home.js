@@ -1,10 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import FileUpload from '../components/FileUpload';
 import LanguageSelector from '../components/LanguageSelector';
-import { useProcessManager } from '../hooks/useProcessManager';
-import ProcessManager from '../components/ProcessManager';
 
 import { notesAPI } from '../services/api';
 import { BookOpen, Globe, Zap, Users, FileText, X, Clock, ArrowLeft } from 'lucide-react';
@@ -28,31 +26,9 @@ export default function Home() {
   });
 
   const [currentNote, setCurrentNote] = useState(null);
-  
-  // Process management
-  const {
-    isProcessing,
-    currentProcess,
-    startProcess,
-    stopProcess,
-    finishProcess,
-    getAbortSignal
-  } = useProcessManager();
-  
-  // Abort controller for upload operations
-  const uploadAbortController = useRef(null);
 
   useEffect(() => {
     checkCurrentNote();
-  }, []);
-  
-  // Cleanup process manager on unmount
-  useEffect(() => {
-    return () => {
-      if (uploadAbortController.current) {
-        uploadAbortController.current.abort();
-      }
-    };
   }, []);
 
   const checkCurrentNote = () => {
@@ -86,32 +62,6 @@ export default function Home() {
     setCurrentNote(null);
     toast.success('Current note cleared');
   };
-  
-  const cancelUpload = () => {
-    console.log('🛑 Cancelling upload...');
-    
-    // Abort any ongoing fetch requests
-    if (uploadAbortController.current) {
-      uploadAbortController.current.abort();
-      uploadAbortController.current = null;
-    }
-    
-    // Stop the process
-    stopProcess();
-    
-    // Reset states
-    setIsUploading(false);
-    setIsTranslating(false);
-    setUploadProgress({
-      stage: '',
-      message: '',
-      progress: 0,
-      currentPage: 0,
-      totalPages: 0
-    });
-    
-    toast.success('Upload cancelled');
-  };
 
   const handleFileSelect = (file) => {
     console.log('File selected:', file);
@@ -135,10 +85,6 @@ export default function Home() {
     // They'll be prompted to login when trying to save
 
     setIsUploading(true);
-    
-    // Start process management
-    const controller = startProcess('File Upload & Translation');
-    
     setUploadProgress({
       stage: 'uploading',
       message: 'Preparing upload...',
@@ -192,19 +138,12 @@ export default function Home() {
         totalPages: 0
       });
 
-      // Create abort controller for this upload
-      uploadAbortController.current = new AbortController();
-      
-      const response = await notesAPI.create(formData, {
-        signal: uploadAbortController.current.signal
-      });
+      const response = await notesAPI.create(formData);
       const note = response.data;
       
       // Get progress information from the backend
       try {
-        const progressResponse = await notesAPI.getProgress(note.id, {
-          signal: uploadAbortController.current.signal
-        });
+        const progressResponse = await notesAPI.getProgress(note.id);
         const progressData = progressResponse.data;
         
         setUploadProgress({
@@ -232,9 +171,7 @@ export default function Home() {
       
       // Get updated progress information before translation
       try {
-        const progressResponse = await notesAPI.getProgress(note.id, {
-          signal: uploadAbortController.current.signal
-        });
+        const progressResponse = await notesAPI.getProgress(note.id);
         const progressData = progressResponse.data;
         
         setUploadProgress({
@@ -259,9 +196,7 @@ export default function Home() {
       let progressCounter = 0;
       const progressInterval = setInterval(async () => {
         try {
-          const progressResponse = await notesAPI.getProgress(note.id, {
-            signal: uploadAbortController.current.signal
-          });
+          const progressResponse = await notesAPI.getProgress(note.id);
           const progressData = progressResponse.data;
           
           progressCounter++;
@@ -280,9 +215,7 @@ export default function Home() {
       }, 3000); // Poll every 3 seconds
 
       try {
-        const translateResponse = await notesAPI.translate(note.id, {
-          signal: uploadAbortController.current.signal
-        });
+        const translateResponse = await notesAPI.translate(note.id);
         const updatedNote = {
           ...note,
           translation: translateResponse.data
@@ -306,16 +239,7 @@ export default function Home() {
         
         // Navigate to the note with translation already loaded
         navigate(`/notes/${note.id}`, { state: { note: updatedNote } });
-        
-        // Finish the process successfully
-        finishProcess();
       } catch (translateError) {
-        // Check if this was an abort error
-        if (translateError.name === 'AbortError') {
-          console.log('Translation was cancelled');
-          return; // Don't show error toast for cancelled operations
-        }
-        
         console.error('Translation error:', translateError);
         
         // Clear the progress polling interval
@@ -331,19 +255,10 @@ export default function Home() {
         toast.error('Upload successful, but translation failed. You can translate manually.');
         // Still navigate to the note, but without translation
         navigate(`/notes/${note.id}`);
-        
-        // Finish the process (even if failed)
-        finishProcess();
       } finally {
         setIsTranslating(false);
       }
     } catch (error) {
-      // Check if this was an abort error
-      if (error.name === 'AbortError') {
-        console.log('Upload was cancelled');
-        return; // Don't show error toast for cancelled operations
-      }
-      
       console.error('Upload error:', error);
       setUploadProgress({
         stage: 'error',
@@ -353,9 +268,6 @@ export default function Home() {
         totalPages: 0
       });
       toast.error('Failed to upload note');
-      
-      // Finish the process (even if failed)
-      finishProcess();
     } finally {
       setIsUploading(false);
       // Reset progress after a delay
@@ -372,15 +284,9 @@ export default function Home() {
   };
 
   return (
-    <ProcessManager
-      isProcessing={isProcessing}
-      currentProcess={currentProcess}
-      onStopProcess={stopProcess}
-      onStartProcess={() => startProcess('New Process')}
-    >
-      <div className="max-w-6xl mx-auto">
-        {/* Continue Reading Section */}
-        {currentNote && (
+    <div className="max-w-6xl mx-auto">
+      {/* Continue Reading Section */}
+      {currentNote && (
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6 mb-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
@@ -512,18 +418,9 @@ export default function Home() {
                     : `🚀 ${uploadProgress.message || (isUploading ? 'Uploading...' : 'Translating...')}`
                   }
                 </span>
-                <div className="flex items-center space-x-3">
-                  <span className="text-sm text-gray-500">
-                    {uploadProgress.progress || 0}%
-                  </span>
-                  <button
-                    onClick={cancelUpload}
-                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
-                    title="Cancel upload and translation"
-                  >
-                    🛑 Cancel
-                  </button>
-                </div>
+                <span className="text-sm text-gray-500">
+                  {uploadProgress.progress || 0}%
+                </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div 
@@ -598,7 +495,6 @@ export default function Home() {
       )}
 
 
-      </div>
-    </ProcessManager>
+    </div>
   );
 }
