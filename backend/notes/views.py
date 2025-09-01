@@ -221,3 +221,30 @@ class NoteViewSet(viewsets.ModelViewSet):
         notes = self.get_queryset().order_by('-updated_at')[:10]
         serializer = self.get_serializer(notes, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Cancel processing and delete the note"""
+        try:
+            note = self.get_object()
+            print(f"🛑 Cancelling processing for note ID: {pk} - {note.title}")
+            
+            # Delete the note and all associated data
+            note_id = note.id
+            note_title = note.title
+            
+            # Delete the note (this will cascade to translations and other related objects)
+            note.delete()
+            
+            print(f"✅ Successfully cancelled and deleted note: {note_id} - {note_title}")
+            
+            return Response({
+                'status': 'success',
+                'message': f'Processing cancelled and note "{note_title}" deleted successfully'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f"❌ Error cancelling note {pk}: {str(e)}")
+            return Response({
+                'error': f'Failed to cancel processing: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
