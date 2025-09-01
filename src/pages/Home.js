@@ -27,9 +27,6 @@ export default function Home() {
 
   const [currentNote, setCurrentNote] = useState(null);
 
-  // Add abort controller state for cancellation
-  const [abortController, setAbortController] = useState(null);
-
   useEffect(() => {
     checkCurrentNote();
   }, []);
@@ -78,52 +75,6 @@ export default function Home() {
     setSelectedFile(null); // Clear file when text is entered
   };
 
-  // Add cancel handler function
-  const handleCancel = async () => {
-    if (abortController) {
-      abortController.abort();
-      console.log('Process cancelled by user');
-    }
-    
-    // Also cancel backend processing if we have a note ID
-    if (currentNote?.id) {
-      try {
-        console.log('🛑 Cancelling backend processing for note:', currentNote.id);
-        await notesAPI.cancel(currentNote.id);
-        console.log('✅ Backend processing cancelled successfully');
-        
-        // Show success message
-        toast.success('Processing cancelled and note discarded');
-      } catch (error) {
-        console.log('⚠️ Could not cancel backend processing:', error);
-        
-        // If it's a cancellation error, that's actually good - it means processing stopped
-        if (error.response?.data?.error?.includes('cancelled')) {
-          toast.success('Processing stopped successfully');
-        } else {
-          toast.error('Could not stop backend processing');
-        }
-      }
-    } else {
-      toast.info('Process cancelled');
-    }
-    
-    // Reset all states regardless of backend cancellation result
-    setIsUploading(false);
-    setIsTranslating(false);
-    setUploadProgress({
-      stage: '',
-      message: '',
-      progress: 0,
-      currentPage: 0,
-      totalPages: 0
-    });
-    setSelectedFile(null);
-    setTextContent('');
-    setCurrentNote(null);
-    setAbortController(null);
-  };
-
   const handleUpload = async () => {
     if (!selectedFile && !textContent.trim()) {
       toast.error('Please upload a file or enter text');
@@ -133,19 +84,16 @@ export default function Home() {
     // Allow guest users to upload and try the system
     // They'll be prompted to login when trying to save
 
-    try {
-      // Create new abort controller for this entire process
-      const controller = new AbortController();
-      setAbortController(controller);
+    setIsUploading(true);
+    setUploadProgress({
+      stage: 'uploading',
+      message: 'Preparing upload...',
+      progress: 10,
+      currentPage: 0,
+      totalPages: 0
+    });
 
-      setIsUploading(true);
-      setUploadProgress({
-        stage: 'uploading',
-        message: 'Preparing upload...',
-        progress: 10,
-        currentPage: 0,
-        totalPages: 0
-      });
+    try {
       const formData = new FormData();
       
       if (selectedFile) {
@@ -190,11 +138,8 @@ export default function Home() {
         totalPages: 0
       });
 
-      const response = await notesAPI.create(formData, { signal: controller.signal });
+      const response = await notesAPI.create(formData);
       const note = response.data;
-      
-      // Set current note for cancellation purposes
-      setCurrentNote(note);
       
       // Get progress information from the backend
       try {
@@ -270,7 +215,7 @@ export default function Home() {
       }, 3000); // Poll every 3 seconds
 
       try {
-        const translateResponse = await notesAPI.translate(note.id, { signal: controller.signal });
+        const translateResponse = await notesAPI.translate(note.id);
         const updatedNote = {
           ...note,
           translation: translateResponse.data
@@ -314,10 +259,6 @@ export default function Home() {
         setIsTranslating(false);
       }
     } catch (error) {
-      if (error.name === 'AbortError') {
-        console.log('Process was cancelled');
-        return;
-      }
       console.error('Upload error:', error);
       setUploadProgress({
         stage: 'error',
@@ -329,8 +270,6 @@ export default function Home() {
       toast.error('Failed to upload note');
     } finally {
       setIsUploading(false);
-      setIsTranslating(false);
-      setAbortController(null);
       // Reset progress after a delay
       setTimeout(() => {
         setUploadProgress({
@@ -479,15 +418,9 @@ export default function Home() {
                     : `🚀 ${uploadProgress.message || (isUploading ? 'Uploading...' : 'Translating...')}`
                   }
                 </span>
-                
-                {/* Cancel Button - Always visible during any phase */}
-                <button
-                  onClick={handleCancel}
-                  className="px-3 py-1 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200 bg-white"
-                  disabled={!abortController}
-                >
-                  Cancel
-                </button>
+                <span className="text-sm text-gray-500">
+                  {uploadProgress.progress || 0}%
+                </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div 

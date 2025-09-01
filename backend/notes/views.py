@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.shortcuts import get_object_or_404
 from django.db import models
+from django.utils import timezone
 from .models import Note, Translation
 from .serializers import NoteSerializer, NoteCreateSerializer, TranslationSerializer
 from .services import NoteService, TranslationService
@@ -215,44 +216,81 @@ class NoteViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
     
+    @action(detail=True, methods=['post'])
+    def cancel_file_processing(self, request, pk=None):
+        """Cancel ongoing file processing/upload"""
+        try:
+            note = self.get_object()
+            print(f"Cancel file processing request for note ID: {pk}")
+            
+            # Check if note is currently being processed
+            if hasattr(note, 'processing_status') and note.processing_status == 'processing':
+                # Mark note as cancelled
+                note.processing_status = 'cancelled'
+                note.save()
+                print(f"Note {note.id} file processing marked as cancelled")
+                
+                return Response({
+                    'status': 'cancelled',
+                    'message': 'File processing cancelled successfully',
+                    'note_id': note.id
+                })
+            else:
+                return Response({
+                    'status': 'no_processing',
+                    'message': 'No ongoing file processing to cancel'
+                })
+                
+        except Exception as e:
+            print(f"Error cancelling file processing: {str(e)}")
+            return Response(
+                {'error': f'Failed to cancel file processing: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['post'])
+    def cancel_translation(self, request, pk=None):
+        """Cancel ongoing translation processing"""
+        try:
+            note = self.get_object()
+            print(f"Cancel translation request for note ID: {pk}")
+            
+            # Check if there's an ongoing translation
+            try:
+                translation = Translation.objects.get(note=note)
+                if translation.translation_metadata and translation.translation_metadata.get('status') == 'processing':
+                    # Mark translation as cancelled
+                    translation.translation_metadata['status'] = 'cancelled'
+                    translation.translation_metadata['cancelled_at'] = timezone.now().isoformat()
+                    translation.save()
+                    print(f"Translation {translation.id} marked as cancelled")
+                    
+                    return Response({
+                        'status': 'cancelled',
+                        'message': 'Translation processing cancelled successfully',
+                        'translation_id': translation.id
+                    })
+                else:
+                    return Response({
+                        'status': 'no_processing',
+                        'message': 'No ongoing translation to cancel'
+                    })
+            except Translation.DoesNotExist:
+                return Response({
+                    'status': 'no_translation',
+                    'message': 'No translation found for this note'
+                })
+                
+        except Exception as e:
+            print(f"Error cancelling translation: {str(e)}")
+            return Response(
+                {'error': f'Failed to cancel translation: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
     @action(detail=False, methods=['get'])
     def recent(self, request):
         """Get recently viewed notes"""
         notes = self.get_queryset().order_by('-updated_at')[:10]
         serializer = self.get_serializer(notes, many=True)
         return Response(serializer.data)
-
-    @action(detail=True, methods=['post'])
-    def cancel(self, request, pk=None):
-        """Cancel processing and delete the note"""
-        try:
-            note = self.get_object()
-            print(f"🛑 Cancelling processing for note ID: {pk} - {note.title}")
-            
-            # Request cancellation for this note (this will stop ongoing processing)
-            from .services import request_cancellation
-            request_cancellation(note.id)
-            
-            # Delete the note and all associated data
-            note_id = note.id
-            note_title = note.title
-            
-            # Delete the note (this will cascade to translations and other related objects)
-            note.delete()
-            
-            # Clear the cancellation request since the note is deleted
-            from .services import clear_cancellation_request
-            clear_cancellation_request(note_id)
-            
-            print(f"✅ Successfully cancelled and deleted note: {note_id} - {note_title}")
-            
-            return Response({
-                'status': 'success',
-                'message': f'Processing cancelled and note "{note_title}" deleted successfully'
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            print(f"❌ Error cancelling note {pk}: {str(e)}")
-            return Response({
-                'error': f'Failed to cancel processing: {str(e)}'
-            }, status=status.HTTP_400_BAD_REQUEST)

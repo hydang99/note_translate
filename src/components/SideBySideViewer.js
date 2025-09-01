@@ -42,6 +42,12 @@ export default function SideBySideViewer({
   const [syncScrolling, setSyncScrolling] = useState(false);
   const [isSyncActive, setIsSyncActive] = useState(false);
   
+  // Processing state variables
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [processingStage, setProcessingStage] = useState('');
+  const [isCancelling, setIsCancelling] = useState(false);
+  
   const leftPaneRef = useRef(null);
   const rightPaneRef = useRef(null);
   const { currentUser } = useAuth();
@@ -879,6 +885,59 @@ export default function SideBySideViewer({
     }
   };
 
+  // Cancel ongoing processing
+  const handleCancelProcessing = async () => {
+    if (!noteId) return;
+    
+    try {
+      setIsCancelling(true);
+      
+      // Cancel translation if in progress
+      const translationResponse = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/'}notes/${noteId}/cancel_translation/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (translationResponse.ok) {
+        const translationData = await translationResponse.json();
+        if (translationData.status === 'cancelled') {
+          toast.success('Translation cancelled successfully');
+          // Reset translation state
+          setTranslatedContent(null);
+          setCurrentPage(1);
+        }
+      }
+      
+      // Cancel file processing if in progress
+      const fileResponse = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/'}notes/${noteId}/cancel_file_processing/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (fileResponse.ok) {
+        const fileData = await fileResponse.json();
+        if (fileData.status === 'cancelled') {
+          toast.success('File processing cancelled successfully');
+        }
+      }
+      
+      // Reset all processing states
+      setIsProcessing(false);
+      setProcessingProgress(0);
+      setProcessingStage('');
+      
+    } catch (error) {
+      console.error('Error cancelling processing:', error);
+      toast.error('Failed to cancel processing');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= Math.max(originalPages.length, translatedPages.length)) {
       setCurrentPage(newPage);
@@ -893,6 +952,33 @@ export default function SideBySideViewer({
 
   return (
     <div className="space-y-4">
+      {/* Processing Progress Bar with Cancel Button */}
+      {isProcessing && (
+        <div className="bg-white p-4 rounded-lg shadow-sm border">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium text-gray-700">
+              {processingStage || 'Processing...'}
+            </h3>
+            <button
+              onClick={handleCancelProcessing}
+              disabled={isCancelling}
+              className="px-3 py-1 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isCancelling ? 'Cancelling...' : 'Cancel'}
+            </button>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${processingProgress}%` }}
+            ></div>
+          </div>
+          <div className="text-xs text-gray-500 mt-1">
+            {processingProgress}% complete
+          </div>
+        </div>
+      )}
+
       {/* Page Navigation */}
       <div className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm border">
         <button
