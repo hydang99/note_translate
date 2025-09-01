@@ -63,6 +63,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://note-translate-8wxffhxto-hy-dangs-projects-9554bf41.vercel.app",  # Sync toggle deployment
     "https://note-translate-kbidgegne-hy-dangs-projects-9554bf41.vercel.app",  # Enhanced sync deployment
     "https://note-translate-7so74x17s-hy-dangs-projects-9554bf41.vercel.app",  # Section navigation deployment
+    "https://note-translate-hj9m7q3ns-hy-dangs-projects-9554bf41.vercel.app",  # Clean section navigation deployment
     "https://note-translate.vercel.app",  # Vercel custom domain
     "http://localhost:3000",  # For local development
 ]
