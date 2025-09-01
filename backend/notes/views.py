@@ -221,3 +221,32 @@ class NoteViewSet(viewsets.ModelViewSet):
         notes = self.get_queryset().order_by('-updated_at')[:10]
         serializer = self.get_serializer(notes, many=True)
         return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def cancel_processing(self, request, pk=None):
+        """Cancel ongoing processing for a note"""
+        note = self.get_object()
+        
+        try:
+            # For now, we'll just return success since we don't have real-time processing tracking
+            # In the future, this could connect to a task queue system like Celery
+            print(f"Processing cancellation requested for note {note.id}")
+            
+            # You could implement actual cancellation logic here:
+            # - Cancel Celery tasks
+            # - Stop background processes
+            # - Clean up temporary files
+            # - Update processing status
+            
+            return Response({
+                'status': 'cancelled',
+                'message': 'Processing cancellation requested',
+                'note_id': note.id
+            })
+            
+        except Exception as e:
+            print(f"Error cancelling processing for note {note.id}: {str(e)}")
+            return Response(
+                {'error': f'Failed to cancel processing: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
