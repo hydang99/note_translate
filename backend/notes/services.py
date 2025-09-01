@@ -6,6 +6,7 @@ from PIL import Image
 import google.generativeai as genai
 from django.conf import settings
 from .models import Note, Translation
+from .cancellation import cancellation_registry
 
 
 class NoteService:
@@ -13,6 +14,7 @@ class NoteService:
     
     def __init__(self):
         self.setup_gemini()
+        self.current_note_id = None  # Track which note is being processed
     
     def log_memory_usage(self, stage=""):
         """Log current memory usage to help with debugging"""
@@ -37,6 +39,26 @@ class NoteService:
         except Exception as e:
             print(f"Could not check memory limit: {e}")
             return True  # Allow processing if we can't check
+    
+    def check_cancelled(self):
+        """Check if processing has been cancelled"""
+        if self.current_note_id and cancellation_registry.is_cancelled(self.current_note_id):
+            print(f"🛑 Processing cancelled by user for note {self.current_note_id}")
+            raise Exception("Processing cancelled by user")
+        return False
+    
+    def set_current_note(self, note_id: str):
+        """Set the current note being processed"""
+        self.current_note_id = note_id
+        cancellation_registry.register_note(note_id)
+        print(f"📝 NoteService now processing note {note_id}")
+    
+    def clear_current_note(self):
+        """Clear the current note and unregister from processing"""
+        if self.current_note_id:
+            cancellation_registry.unregister_note(self.current_note_id)
+            print(f"📝 NoteService finished processing note {self.current_note_id}")
+            self.current_note_id = None
     
     def get_optimal_batch_size(self, file_size_mb, page_count):
         """Calculate optimal batch size based on file size and page count - Railway Hobby plan has 8GB RAM"""
@@ -100,6 +122,14 @@ class NoteService:
             def process_page(page_data):
                 page_num, page = page_data
                 print(f"Processing page {page_num + 1}/{len(doc)}")
+                
+                # Check if processing has been cancelled
+                if self.cancelled:
+                    print(f"🛑 Processing cancelled while processing page {page_num + 1}")
+                    return page_num, {
+                        'page_number': page_num + 1,
+                        'content': f"[Processing cancelled]"
+                    }
                 
                 try:
                     # Convert page to image (no zoom to keep it simple)
@@ -174,6 +204,9 @@ Extract the text maintaining proper sentence structure and formatting:""",
             pages_data = []
             
             for batch_start in range(0, len(doc), batch_size):
+                # Check if processing has been cancelled
+                self.check_cancelled()
+                
                 batch_end = min(batch_start + batch_size, len(doc))
                 print(f"Processing batch {batch_start//batch_size + 1}/{(len(doc) + batch_size - 1)//batch_size} (pages {batch_start + 1}-{batch_end})")
                 
@@ -199,9 +232,15 @@ Extract the text maintaining proper sentence structure and formatting:""",
                     
                     # Collect batch results
                     for future in as_completed(future_to_page):
+                        # Check if processing has been cancelled
+                        self.check_cancelled()
+                        
                         page_num, page_data = future.result()
                         batch_pages.append(page_data)
                         print(f"✅ Completed page {page_data['page_number']}")
+                
+                # Check if processing has been cancelled after batch
+                self.check_cancelled()
                 
                 # Add batch results to main list
                 pages_data.extend(batch_pages)
@@ -251,7 +290,14 @@ Extract the text maintaining proper sentence structure and formatting:""",
     def process_uploaded_file(self, note):
         """Process uploaded file and extract content"""
         print(f"Processing uploaded file for note {note.id}")
+        
+        # Set this note as the current one being processed
+        self.set_current_note(str(note.id))
+        
         self.log_memory_usage("before file processing")
+        
+        # Check if processing has been cancelled
+        self.check_cancelled()
         
         # Check initial memory state - Railway Hobby plan has 8GB RAM
         if not self.check_memory_limit(1000):  # 1GB initial limit for Railway
@@ -290,7 +336,12 @@ Extract the text maintaining proper sentence structure and formatting:""",
             
         except Exception as e:
             print(f"Error processing file: {str(e)}")
+            # Always clear the current note, even on error
+            self.clear_current_note()
             raise e
+        finally:
+            # Always clear the current note when done
+            self.clear_current_note()
 
 
 class TranslationService:
@@ -522,6 +573,10 @@ class TranslationService:
             raise Exception("Note has no content to translate")
         
         print(f"Starting translation for note {note.id} - {note.title}")
+        
+        # Set this note as the current one being translated
+        self.set_current_note(str(note.id))
+        
         print(f"Content type: {type(note.content)}")
         print(f"Content length: {len(note.content) if note.content else 0}")
         print(f"Content preview: {note.content[:500] if note.content else 'None'}...")
@@ -710,6 +765,14 @@ class TranslationService:
         self.log_memory_usage("after saving translation")
         
         return translation
+        
+        except Exception as e:
+            # Clear the current note even if translation fails
+            self.clear_current_note()
+            raise e
+        finally:
+            # Always clear the current note when done
+            self.clear_current_note()
 
     def get_word_definition(self, word, source_lang='en', target_lang='vi', context=''):
         """Get comprehensive word definition, translation, and context using AI"""

@@ -194,17 +194,27 @@ class NoteViewSet(viewsets.ModelViewSet):
         """Cancel ongoing processing for a note"""
         try:
             note = self.get_object()
-            print(f"🛑 Cancelling processing for note {note.id}")
+            note_id = str(note.id)
+            print(f"🛑 Cancelling processing for note {note_id}")
             
-            # For now, we can't actually cancel backend processing
-            # But we can return a success response to acknowledge the request
-            # In the future, this could implement actual cancellation logic
+            # Cancel the note using the global cancellation registry
+            from .cancellation import cancellation_registry
+            cancelled = cancellation_registry.cancel_note(note_id)
             
-            return Response({
-                'status': 'cancelled',
-                'message': 'Processing cancellation requested',
-                'note_id': note.id
-            })
+            if cancelled:
+                print(f"✅ Processing cancelled for note {note_id}")
+                return Response({
+                    'status': 'cancelled',
+                    'message': 'Processing cancelled successfully',
+                    'note_id': note_id
+                })
+            else:
+                print(f"⚠️  Note {note_id} not currently being processed")
+                return Response({
+                    'status': 'not_processing',
+                    'message': 'Note not currently being processed',
+                    'note_id': note_id
+                })
             
         except Exception as e:
             print(f"❌ Error cancelling processing: {e}")
