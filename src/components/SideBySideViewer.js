@@ -234,11 +234,38 @@ export default function SideBySideViewer({
     sectionElement.style.borderLeft = '4px solid #3b82f6';
     sectionElement.style.transition = 'all 0.3s ease';
     
-    // Clear visual feedback after 2 seconds
+    // Find and highlight the corresponding section in the target container
+    setTimeout(() => {
+      const targetSections = targetContainer.querySelectorAll('.clickable-section');
+      if (targetSections.length > 0) {
+        // Find the section at the same relative position
+        const targetSectionIndex = Math.floor(scrollPercentage * targetSections.length);
+        const targetSection = targetSections[Math.min(targetSectionIndex, targetSections.length - 1)];
+        
+        if (targetSection) {
+          targetSection.style.backgroundColor = '#dbeafe';
+          targetSection.style.borderLeft = '4px solid #3b82f6';
+          targetSection.style.transition = 'all 0.3s ease';
+        }
+      }
+    }, 300); // Wait for scroll animation to complete
+    
+    // Clear visual feedback after 3 seconds
     setTimeout(() => {
       sectionElement.style.backgroundColor = '';
       sectionElement.style.borderLeft = '';
-    }, 2000);
+      
+      // Also clear the target section highlight
+      const targetSections = targetContainer.querySelectorAll('.clickable-section');
+      if (targetSections.length > 0) {
+        const targetSectionIndex = Math.floor(scrollPercentage * targetSections.length);
+        const targetSection = targetSections[Math.min(targetSectionIndex, targetSections.length - 1)];
+        if (targetSection) {
+          targetSection.style.backgroundColor = '';
+          targetSection.style.borderLeft = '';
+        }
+      }
+    }, 3000);
   };
 
   // Handle click on highlighted word to sync scroll to corresponding position
