@@ -643,8 +643,8 @@ export default function SideBySideViewer({
         const textIndex = fullTextLower.indexOf(selectedTextLower);
         
         if (textIndex !== -1) {
-          // Extract context around the selected word (about 100-150 characters)
-          const contextLength = 75; // Characters before and after
+          // Extract context around the selected word (about 300-400 characters)
+          const contextLength = 200; // Characters before and after
           const startIndex = Math.max(0, textIndex - contextLength);
           const endIndex = Math.min(fullText.length, textIndex + text.length + contextLength);
           
