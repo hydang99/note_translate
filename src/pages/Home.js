@@ -88,6 +88,7 @@ export default function Home() {
       message: 'Preparing upload...',
       progress: 10
     });
+    console.log('Progress set to:', { stage: 'uploading', message: 'Preparing upload...', progress: 10 });
 
     try {
       const formData = new FormData();
@@ -325,14 +326,14 @@ export default function Home() {
           </div>
 
           {/* Progress Indicator */}
-          {(isUploading || isTranslating) && uploadProgress.stage && (
+          {(isUploading || isTranslating) && (
             <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-700">
-                  {uploadProgress.message}
+                  {uploadProgress.message || (isUploading ? 'Preparing upload...' : 'Translating...')}
                 </span>
                 <span className="text-sm text-gray-500">
-                  {uploadProgress.progress}%
+                  {uploadProgress.progress || (isUploading ? 25 : 75)}%
                 </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
@@ -344,7 +345,7 @@ export default function Home() {
                       ? 'bg-green-500'
                       : 'bg-primary-500'
                   }`}
-                  style={{ width: `${uploadProgress.progress}%` }}
+                  style={{ width: `${uploadProgress.progress || (isUploading ? 25 : 75)}%` }}
                 ></div>
               </div>
               <div className="mt-2 text-xs text-gray-500">
@@ -353,6 +354,8 @@ export default function Home() {
                 {uploadProgress.stage === 'translating' && 'Translating content to your target language...'}
                 {uploadProgress.stage === 'complete' && 'All done! Redirecting to your note...'}
                 {uploadProgress.stage === 'error' && 'Something went wrong. Please try again.'}
+                {!uploadProgress.stage && isUploading && 'Preparing your upload...'}
+                {!uploadProgress.stage && isTranslating && 'Processing your request...'}
               </div>
             </div>
           )}
