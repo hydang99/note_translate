@@ -212,58 +212,65 @@ export default function SideBySideViewer({
     
     if (!sectionElement || sectionElement === container) return;
     
-    // Get the position of the section relative to the container
-    const containerRect = container.getBoundingClientRect();
-    const sectionRect = sectionElement.getBoundingClientRect();
-    const relativeTop = sectionRect.top - containerRect.top + container.scrollTop;
+    // Get all sections in the source container
+    const sourceSections = container.querySelectorAll('.clickable-section');
+    const targetSections = targetContainer.querySelectorAll('.clickable-section');
     
-    // Calculate scroll percentage
-    const scrollPercentage = relativeTop / (container.scrollHeight - container.clientHeight);
+    // Find the index of the clicked section
+    let clickedIndex = -1;
+    for (let i = 0; i < sourceSections.length; i++) {
+      if (sourceSections[i] === sectionElement) {
+        clickedIndex = i;
+        break;
+      }
+    }
     
-    // Scroll the target container to the same relative position
-    const targetScrollTop = scrollPercentage * (targetContainer.scrollHeight - targetContainer.clientHeight);
+    if (clickedIndex === -1) return;
     
-    // Smooth scroll to the target position
-    targetContainer.scrollTo({
-      top: targetScrollTop,
-      behavior: 'smooth'
-    });
+    // Find the corresponding section in the target container
+    let targetSection = null;
+    if (clickedIndex < targetSections.length) {
+      // Direct index match
+      targetSection = targetSections[clickedIndex];
+    } else {
+      // Fallback: use the last section if index is out of bounds
+      targetSection = targetSections[targetSections.length - 1];
+    }
+    
+    // Scroll to the target section
+    if (targetSection) {
+      const targetRect = targetSection.getBoundingClientRect();
+      const targetContainerRect = targetContainer.getBoundingClientRect();
+      const targetScrollTop = targetContainer.scrollTop + targetRect.top - targetContainerRect.top - 50; // 50px offset from top
+      
+      targetContainer.scrollTo({
+        top: targetScrollTop,
+        behavior: 'smooth'
+      });
+    }
     
     // Add visual feedback to the clicked section
     sectionElement.style.backgroundColor = '#dbeafe';
     sectionElement.style.borderLeft = '4px solid #3b82f6';
     sectionElement.style.transition = 'all 0.3s ease';
     
-    // Find and highlight the corresponding section in the target container
-    setTimeout(() => {
-      const targetSections = targetContainer.querySelectorAll('.clickable-section');
-      if (targetSections.length > 0) {
-        // Find the section at the same relative position
-        const targetSectionIndex = Math.floor(scrollPercentage * targetSections.length);
-        const targetSection = targetSections[Math.min(targetSectionIndex, targetSections.length - 1)];
-        
-        if (targetSection) {
-          targetSection.style.backgroundColor = '#dbeafe';
-          targetSection.style.borderLeft = '4px solid #3b82f6';
-          targetSection.style.transition = 'all 0.3s ease';
-        }
-      }
-    }, 300); // Wait for scroll animation to complete
+    // Highlight the corresponding section in the target container
+    if (targetSection) {
+      setTimeout(() => {
+        targetSection.style.backgroundColor = '#dbeafe';
+        targetSection.style.borderLeft = '4px solid #3b82f6';
+        targetSection.style.transition = 'all 0.3s ease';
+      }, 300); // Wait for scroll animation to complete
+    }
     
     // Clear visual feedback after 3 seconds
     setTimeout(() => {
       sectionElement.style.backgroundColor = '';
       sectionElement.style.borderLeft = '';
       
-      // Also clear the target section highlight
-      const targetSections = targetContainer.querySelectorAll('.clickable-section');
-      if (targetSections.length > 0) {
-        const targetSectionIndex = Math.floor(scrollPercentage * targetSections.length);
-        const targetSection = targetSections[Math.min(targetSectionIndex, targetSections.length - 1)];
-        if (targetSection) {
-          targetSection.style.backgroundColor = '';
-          targetSection.style.borderLeft = '';
-        }
+      if (targetSection) {
+        targetSection.style.backgroundColor = '';
+        targetSection.style.borderLeft = '';
       }
     }, 3000);
   };
