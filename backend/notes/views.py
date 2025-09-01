@@ -190,6 +190,30 @@ class NoteViewSet(viewsets.ModelViewSet):
         })
     
     @action(detail=True, methods=['post'])
+    def cancel_processing(self, request, pk=None):
+        """Cancel ongoing processing for a note"""
+        try:
+            note = self.get_object()
+            print(f"🛑 Cancelling processing for note {note.id}")
+            
+            # For now, we can't actually cancel backend processing
+            # But we can return a success response to acknowledge the request
+            # In the future, this could implement actual cancellation logic
+            
+            return Response({
+                'status': 'cancelled',
+                'message': 'Processing cancellation requested',
+                'note_id': note.id
+            })
+            
+        except Exception as e:
+            print(f"❌ Error cancelling processing: {e}")
+            return Response(
+                {'error': f'Failed to cancel processing: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['post'])
     def re_extract_text(self, request, pk=None):
         """Re-extract text from uploaded file with improved formatting"""
         note = self.get_object()
@@ -221,33 +245,3 @@ class NoteViewSet(viewsets.ModelViewSet):
         notes = self.get_queryset().order_by('-updated_at')[:10]
         serializer = self.get_serializer(notes, many=True)
         return Response(serializer.data)
-    
-    @action(detail=True, methods=['post'])
-    def cancel_processing(self, request, pk=None):
-        """Cancel ongoing processing for a note"""
-        try:
-            note = self.get_object()
-            action = request.data.get('action')
-            
-            if action == 'cancel_processing':
-                print(f"🔄 Cancelling processing for note {note.id}")
-                
-                # For now, we'll just log the cancellation
-                # In the future, this could stop actual background tasks
-                print(f"✅ Processing cancelled for note {note.id}")
-                
-                return Response({
-                    'status': 'cancelled',
-                    'message': f'Processing cancelled for note {note.id}',
-                    'note_id': note.id
-                })
-            else:
-                return Response({
-                    'error': 'Invalid action'
-                }, status=status.HTTP_400_BAD_REQUEST)
-                
-        except Exception as e:
-            print(f"❌ Error cancelling processing: {str(e)}")
-            return Response({
-                'error': f'Failed to cancel processing: {str(e)}'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

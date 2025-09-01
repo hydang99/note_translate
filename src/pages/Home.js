@@ -26,58 +26,12 @@ export default function Home() {
   });
 
   const [currentNote, setCurrentNote] = useState(null);
+  const [abortController, setAbortController] = useState(null);
+  const [progressInterval, setProgressInterval] = useState(null);
 
   useEffect(() => {
     checkCurrentNote();
   }, []);
-
-  // Handle page refresh/unload - cancel any ongoing processing
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      // Check if there's an ongoing upload or translation
-      if (isUploading || isTranslating) {
-        console.log('🔄 Page refresh detected, cancelling ongoing processing...');
-        
-        // Try to cancel any ongoing note processing
-        if (currentNote && currentNote.id) {
-          const data = JSON.stringify({ 
-            action: 'cancel_processing',
-            note_id: currentNote.id 
-          });
-          navigator.sendBeacon(
-            `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/'}notes/${currentNote.id}/cancel_processing/`,
-            data
-          );
-        }
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden' && (isUploading || isTranslating)) {
-        console.log('🔄 Page hidden, cancelling ongoing processing...');
-        
-        // Try to cancel any ongoing note processing
-        if (currentNote && currentNote.id) {
-          const data = JSON.stringify({ 
-            action: 'cancel_processing',
-            note_id: currentNote.id 
-          });
-          navigator.sendBeacon(
-            `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/'}notes/${currentNote.id}/cancel_processing/`,
-            data
-          );
-        }
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [isUploading, isTranslating, currentNote]);
 
   const checkCurrentNote = () => {
     // Check if there's a current note stored in localStorage
@@ -111,6 +65,50 @@ export default function Home() {
     toast.success('Current note cleared');
   };
 
+  const handleCancel = async () => {
+    console.log('🛑 Cancelling upload/processing...');
+    
+    // Cancel the fetch request if it's in progress
+    if (abortController) {
+      abortController.abort();
+      console.log('✅ Fetch request cancelled');
+    }
+    
+    // Clear the progress polling interval
+    if (progressInterval) {
+      clearInterval(progressInterval);
+      setProgressInterval(null);
+      console.log('✅ Progress polling cancelled');
+    }
+    
+    // Try to cancel backend processing if we have a note ID
+    if (currentNote?.id) {
+      try {
+        await notesAPI.cancelProcessing(currentNote.id);
+        console.log('✅ Backend processing cancellation requested');
+      } catch (error) {
+        console.log('⚠️ Could not cancel backend processing:', error);
+      }
+    }
+    
+    // Reset all states
+    setIsUploading(false);
+    setIsTranslating(false);
+    setUploadProgress({
+      stage: '',
+      message: '',
+      progress: 0,
+      currentPage: 0,
+      totalPages: 0
+    });
+    
+    // Clear the abort controller
+    setAbortController(null);
+    
+    toast.success('Process cancelled successfully');
+    console.log('🛑 Upload/processing cancelled');
+  };
+
   const handleFileSelect = (file) => {
     console.log('File selected:', file);
     setSelectedFile(file);
@@ -132,6 +130,10 @@ export default function Home() {
     // Allow guest users to upload and try the system
     // They'll be prompted to login when trying to save
 
+    // Create a new abort controller for this upload
+    const controller = new AbortController();
+    setAbortController(controller);
+    
     setIsUploading(true);
     setUploadProgress({
       stage: 'uploading',
@@ -186,7 +188,7 @@ export default function Home() {
         totalPages: 0
       });
 
-      const response = await notesAPI.create(formData);
+      const response = await notesAPI.create(formData, { signal: controller.signal });
       const note = response.data;
       
       // Get progress information from the backend
@@ -242,7 +244,8 @@ export default function Home() {
 
       // Start polling for progress updates during translation
       let progressCounter = 0;
-      const progressInterval = setInterval(async () => {
+      const interval = setInterval(async () => {
+        setProgressInterval(interval);
         try {
           const progressResponse = await notesAPI.getProgress(note.id);
           const progressData = progressResponse.data;
@@ -270,7 +273,8 @@ export default function Home() {
         };
         
         // Clear the progress polling interval
-        clearInterval(progressInterval);
+        clearInterval(interval);
+        setProgressInterval(null);
         
         setUploadProgress({
           stage: 'complete',
@@ -291,7 +295,8 @@ export default function Home() {
         console.error('Translation error:', translateError);
         
         // Clear the progress polling interval
-        clearInterval(progressInterval);
+        clearInterval(interval);
+        setProgressInterval(null);
         
         setUploadProgress({
           stage: 'error',
@@ -397,7 +402,7 @@ export default function Home() {
         <div className="text-center p-6">
           <Zap className="h-12 w-12 text-primary-600 mx-auto mb-4" />
           <h3 className="text-lg font-semibold mb-2">Side-by-Side View</h3>
-          <p className="text-gray-600">Compare original and ls
+          <p className="text-gray-600">Compare original and translation
           d content easily</p>
         </div>
       </div>
@@ -500,6 +505,17 @@ export default function Home() {
                 {uploadProgress.stage === 'error' && 'Something went wrong. Please try again.'}
                 {!uploadProgress.stage && isUploading && 'Preparing your upload...'}
                 {!uploadProgress.stage && isTranslating && 'Processing your request...'}
+              </div>
+              
+              {/* Cancel Button */}
+              <div className="mt-4 flex justify-center">
+                <button
+                  onClick={handleCancel}
+                  className="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 transition-colors flex items-center space-x-2"
+                >
+                  <X className="h-4 w-4" />
+                  <span>Cancel Process</span>
+                </button>
               </div>
             </div>
           )}

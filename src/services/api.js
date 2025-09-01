@@ -46,11 +46,12 @@ api.interceptors.response.use(
 export const notesAPI = {
   getAll: () => api.get('/notes/'),
   getById: (id) => api.get(`/notes/${id}/`),
-  create: (data) => {
+  create: (data, options = {}) => {
     // If data is already a FormData object, use it directly
     if (data instanceof FormData) {
       return api.post('/notes/', data, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 'Content-Type': 'multipart/form-data' },
+        ...options
       });
     }
     
@@ -62,7 +63,8 @@ export const notesAPI = {
       }
     });
     return api.post('/notes/', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
+      ...options
     });
   },
   update: (id, data) => api.patch(`/notes/${id}/`, data),
@@ -72,6 +74,7 @@ export const notesAPI = {
   reExtractText: (id) => api.post(`/notes/${id}/re_extract_text/`),
   getRecent: () => api.get('/notes/recent/'),
   getProgress: (id) => api.get(`/notes/${id}/progress/`),
+  cancelProcessing: (id) => api.post(`/notes/${id}/cancel_processing/`),
 };
 
 // Vocabulary API
