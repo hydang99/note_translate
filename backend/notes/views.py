@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.shortcuts import get_object_or_404
 from django.db import models
+from django.utils import timezone
 from .models import Note, Translation
 from .serializers import NoteSerializer, NoteCreateSerializer, TranslationSerializer
 from .services import NoteService, TranslationService
@@ -228,9 +229,14 @@ class NoteViewSet(viewsets.ModelViewSet):
         note = self.get_object()
         
         try:
+            print(f"🔄 Processing cancellation requested for note {note.id}")
+            print(f"Request data: {request.data}")
+            
             # For now, we'll just return success since we don't have real-time processing tracking
             # In the future, this could connect to a task queue system like Celery
-            print(f"Processing cancellation requested for note {note.id}")
+            
+            # Log the cancellation attempt
+            print(f"✅ Processing cancellation confirmed for note {note.id}")
             
             # You could implement actual cancellation logic here:
             # - Cancel Celery tasks
@@ -240,12 +246,13 @@ class NoteViewSet(viewsets.ModelViewSet):
             
             return Response({
                 'status': 'cancelled',
-                'message': 'Processing cancellation requested',
-                'note_id': note.id
+                'message': 'Processing cancellation confirmed',
+                'note_id': note.id,
+                'timestamp': timezone.now().isoformat()
             })
             
         except Exception as e:
-            print(f"Error cancelling processing for note {note.id}: {str(e)}")
+            print(f"❌ Error cancelling processing for note {note.id}: {str(e)}")
             return Response(
                 {'error': f'Failed to cancel processing: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR

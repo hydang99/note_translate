@@ -929,51 +929,79 @@ export default function SideBySideViewer({
       }
     }
   };
+  
+  // Start processing state for file operations
+  const startProcessing = (stage = 'Processing file...') => {
+    console.log(`🚀 Starting processing: ${stage}`);
+    setIsProcessing(true);
+    setProcessingProgress(0);
+    setProcessingStage(stage);
+  };
+  
+  // Update processing progress
+  const updateProcessingProgress = (progress, stage) => {
+    console.log(`📊 Processing progress: ${progress}% - ${stage}`);
+    setProcessingProgress(progress);
+    setProcessingStage(stage);
+  };
+  
+  // Complete processing
+  const completeProcessing = () => {
+    console.log('✅ Processing completed');
+    setIsProcessing(false);
+    setProcessingProgress(100);
+    setProcessingStage('Completed');
+    
+    // Reset after a delay
+    setTimeout(() => {
+      setProcessingProgress(0);
+      setProcessingStage('');
+    }, 2000);
+  };
 
       const currentOriginalPage = originalPages[currentPage - 1] || '';
     const currentTranslatedPage = translatedPages[currentPage - 1] || '';
     
-    // Handle page refresh/unload - cancel any ongoing processing
-    useEffect(() => {
-      const handleBeforeUnload = () => {
-        if (isProcessing && noteId) {
-          console.log('🔄 Page refresh detected, cancelling backend processing...');
-          // Try to cancel processing before page unloads
-          fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/'}notes/${noteId}/cancel_processing/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            // Use sendBeacon for more reliable delivery during page unload
-            keepalive: true
-          }).catch(() => {}); // Ignore errors during unload
-        }
-      };
+      // Handle page refresh/unload - cancel any ongoing processing
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (isProcessing && noteId) {
+        console.log('🔄 Page refresh detected, cancelling backend processing...');
+        // Use navigator.sendBeacon for more reliable delivery during page unload
+        const data = JSON.stringify({ note_id: noteId });
+        navigator.sendBeacon(
+          `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/'}notes/${noteId}/cancel_processing/`,
+          data
+        );
+      }
+    };
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && isProcessing && noteId) {
+        console.log('🔄 Page hidden, cancelling backend processing...');
+        // Page is being hidden (refresh, tab switch, etc.)
+        const data = JSON.stringify({ note_id: noteId });
+        navigator.sendBeacon(
+          `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/'}notes/${noteId}/cancel_processing/`,
+          data
+        );
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === 'hidden' && isProcessing && noteId) {
-          console.log('🔄 Page hidden, cancelling backend processing...');
-          // Page is being hidden (refresh, tab switch, etc.)
-          fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/'}notes/${noteId}/cancel_processing/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            keepalive: true
-          }).catch(() => {});
-        }
-      };
-      
-      window.addEventListener('beforeunload', handleBeforeUnload);
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-      
-      return () => {
-        window.removeEventListener('beforeunload', handleBeforeUnload);
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
-        
-        // Also cancel processing when component unmounts
-        if (isProcessing && noteId) {
-          console.log('🔄 Component unmounting, cancelling backend processing...');
-          handleCancelProcessing();
-        }
-      };
-    }, [noteId, isProcessing]);
+      // Also cancel processing when component unmounts
+      if (isProcessing && noteId) {
+        console.log('🔄 Component unmounting, cancelling backend processing...');
+        handleCancelProcessing();
+      }
+    };
+  }, [noteId, isProcessing]);
     
         return (
       <div className="space-y-4">
@@ -1003,6 +1031,35 @@ export default function SideBySideViewer({
             </div>
           </div>
         )}
+
+        {/* Test Processing Button (for demonstration) */}
+        <div className="bg-white p-4 rounded-lg shadow-sm border">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-700">Processing Test</h3>
+            <div className="space-x-2">
+              <button
+                onClick={() => startProcessing('Testing file processing...')}
+                className="px-3 py-1 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100"
+              >
+                Start Processing
+              </button>
+              <button
+                onClick={() => updateProcessingProgress(50, 'Halfway done...')}
+                disabled={!isProcessing}
+                className="px-3 py-1 text-sm font-medium text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-md hover:bg-yellow-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Update Progress
+              </button>
+              <button
+                onClick={completeProcessing}
+                disabled={!isProcessing}
+                className="px-3 py-1 text-sm font-medium text-green-600 bg-green-50 border border-green-200 rounded-md hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Complete
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* Page Navigation */}
         <div className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm border">
