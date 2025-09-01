@@ -39,7 +39,7 @@ export default function SideBySideViewer({
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
-  const [syncScrolling, setSyncScrolling] = useState(true);
+  const [syncScrolling, setSyncScrolling] = useState(false);
   const [isSyncActive, setIsSyncActive] = useState(false);
   
   const leftPaneRef = useRef(null);
@@ -54,6 +54,54 @@ export default function SideBySideViewer({
       }
     };
   }, []);
+
+  // Section-based navigation system
+  const handleSectionClick = (event, isLeftPane) => {
+    // Only work when sync is off (we want section navigation instead)
+    if (syncScrolling) return;
+    
+    const clickedElement = event.target;
+    const container = isLeftPane ? leftPaneRef.current : rightPaneRef.current;
+    const targetContainer = isLeftPane ? rightPaneRef.current : leftPaneRef.current;
+    
+    if (!container || !targetContainer) return;
+    
+    // Find the section (paragraph, heading, or block) that was clicked
+    let sectionElement = clickedElement;
+    while (sectionElement && sectionElement !== container) {
+      // Check if this element is a section (paragraph, heading, div, etc.)
+      if (sectionElement.tagName && ['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DIV', 'LI'].includes(sectionElement.tagName)) {
+        break;
+      }
+      sectionElement = sectionElement.parentElement;
+    }
+    
+    if (!sectionElement || sectionElement === container) return;
+    
+    // Get the position of the section relative to the container
+    const containerRect = container.getBoundingClientRect();
+    const sectionRect = sectionElement.getBoundingClientRect();
+    const relativeTop = sectionRect.top - containerRect.top + container.scrollTop;
+    
+    // Calculate scroll percentage
+    const scrollPercentage = relativeTop / (container.scrollHeight - container.clientHeight);
+    
+    // Scroll the target container to the same relative position
+    const targetScrollTop = scrollPercentage * (targetContainer.scrollHeight - targetContainer.clientHeight);
+    
+    // Smooth scroll to the target position
+    targetContainer.scrollTo({
+      top: targetScrollTop,
+      behavior: 'smooth'
+    });
+    
+    // Add visual feedback
+    sectionElement.style.backgroundColor = '#fef3c7';
+    sectionElement.style.transition = 'background-color 0.3s ease';
+    setTimeout(() => {
+      sectionElement.style.backgroundColor = '';
+    }, 1000);
+  };
 
   // Helper functions for editing
   const getCleanTextForEditing = (content) => {
@@ -421,24 +469,24 @@ export default function SideBySideViewer({
     return pages;
   };
 
-  // Custom component to render markdown with highlights
-  const MarkdownWithHighlights = ({ content, highlightedWords }) => {
+  // Custom component to render markdown with highlights and clickable sections
+  const MarkdownWithHighlights = ({ content, highlightedWords, isLeftPane = false }) => {
     if (!content) return null;
     
-    // Convert markdown to HTML first
+    // Convert markdown to HTML first with clickable sections
     const htmlContent = content
-      .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold text-gray-900 mb-4 pb-2 border-b-2 border-blue-500">$1</h1>')
-      .replace(/^## (.*$)/gim, '<h2 class="text-xl font-bold text-gray-800 mb-3 pb-1 border-b border-gray-300">$1</h2>')
-      .replace(/^### (.*$)/gim, '<h3 class="text-lg font-semibold text-gray-700 mb-2">$1</h3>')
-      .replace(/^\* (.*$)/gim, '<li class="text-gray-700 leading-relaxed">$1</li>')
-      .replace(/^- (.*$)/gim, '<li class="text-gray-700 leading-relaxed">$1</li>')
+      .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold text-gray-900 mb-4 pb-2 border-b-2 border-blue-500 clickable-section cursor-pointer hover:bg-blue-50 transition-colors duration-200 rounded px-2 py-1" data-section="heading">$1</h1>')
+      .replace(/^## (.*$)/gim, '<h2 class="text-xl font-bold text-gray-800 mb-3 pb-1 border-b border-gray-300 clickable-section cursor-pointer hover:bg-gray-50 transition-colors duration-200 rounded px-2 py-1" data-section="heading">$1</h2>')
+      .replace(/^### (.*$)/gim, '<h3 class="text-lg font-semibold text-gray-700 mb-2 clickable-section cursor-pointer hover:bg-gray-50 transition-colors duration-200 rounded px-2 py-1" data-section="heading">$1</h3>')
+      .replace(/^\* (.*$)/gim, '<li class="text-gray-700 leading-relaxed clickable-section cursor-pointer hover:bg-gray-50 transition-colors duration-200 rounded px-2 py-1" data-section="list-item">$1</li>')
+      .replace(/^- (.*$)/gim, '<li class="text-gray-700 leading-relaxed clickable-section cursor-pointer hover:bg-gray-50 transition-colors duration-200 rounded px-2 py-1" data-section="list-item">$1</li>')
       .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-gray-900">$1</strong>')
       .replace(/\*(.*?)\*/g, '<em class="italic text-gray-600">$1</em>')
-      .replace(/\n\n/g, '</p><p class="text-gray-700 leading-relaxed mb-3">')
+      .replace(/\n\n/g, '</p><p class="text-gray-700 leading-relaxed mb-3 clickable-section cursor-pointer hover:bg-gray-50 transition-colors duration-200 rounded px-2 py-1" data-section="paragraph">')
       .replace(/\n/g, '<br>');
     
-    // Wrap in paragraph tags
-    let finalContent = `<p class="text-gray-700 leading-relaxed mb-3">${htmlContent}</p>`;
+    // Wrap in paragraph tags with clickable class
+    let finalContent = `<p class="text-gray-700 leading-relaxed mb-3 clickable-section cursor-pointer hover:bg-gray-50 transition-colors duration-200 rounded px-2 py-1" data-section="paragraph">${htmlContent}</p>`;
     
     // Add highlights
     if (highlightedWords.size > 0) {
@@ -756,21 +804,22 @@ export default function SideBySideViewer({
             className={`flex items-center space-x-2 px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
               syncScrolling 
                 ? 'bg-blue-100 text-blue-700 border border-blue-200 hover:bg-blue-200 shadow-sm' 
-                : 'bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200'
+                : 'bg-green-100 text-green-700 border border-green-200 hover:bg-green-200 shadow-sm'
             }`}
-            title={syncScrolling ? 'Disable synchronized scrolling' : 'Enable synchronized scrolling'}
+            title={syncScrolling ? 'Disable synchronized scrolling' : 'Enable section-based navigation (click sections to jump)'}
           >
             <div className={`w-2 h-2 rounded-full transition-all duration-200 ${
               syncScrolling 
                 ? (isSyncActive ? 'bg-green-500 animate-pulse' : 'bg-blue-500') 
-                : 'bg-gray-400'
+                : 'bg-green-500'
             }`}></div>
-            <span>{syncScrolling ? 'Sync On' : 'Sync Off'}</span>
-            {syncScrolling && (
-              <div className="text-xs text-blue-600 font-normal">
-                {isSyncActive ? '(Syncing...)' : '(Scroll together)'}
-              </div>
-            )}
+            <span>{syncScrolling ? 'Sync On' : 'Sections'}</span>
+            <div className="text-xs font-normal">
+              {syncScrolling 
+                ? (isSyncActive ? '(Syncing...)' : '(Scroll together)')
+                : '(Click to jump)'
+              }
+            </div>
           </button>
         </div>
 
@@ -841,11 +890,13 @@ All formatting will be preserved when you save."
               className="text-pane-content markdown-content overflow-y-auto scroll-smooth"
               onMouseUp={handleTextSelection}
               onScroll={handleLeftPaneScroll}
+              onClick={(e) => handleSectionClick(e, true)}
               style={{ scrollBehavior: 'smooth' }}
             >
               <MarkdownWithHighlights 
                 content={currentOriginalPage} 
-                highlightedWords={highlightedWords} 
+                highlightedWords={highlightedWords}
+                isLeftPane={true}
               />
             </div>
           )}
@@ -864,11 +915,13 @@ All formatting will be preserved when you save."
              className="text-pane-content markdown-content overflow-y-auto scroll-smooth"
              onMouseUp={handleTextSelection}
              onScroll={handleRightPaneScroll}
+             onClick={(e) => handleSectionClick(e, false)}
              style={{ scrollBehavior: 'smooth' }}
            >
              <MarkdownWithHighlights 
                content={currentTranslatedPage} 
-               highlightedWords={highlightedWords} 
+               highlightedWords={highlightedWords}
+               isLeftPane={false}
              />
            </div>
         </div>
