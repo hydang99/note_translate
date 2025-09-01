@@ -328,12 +328,17 @@ export default function Home() {
             />
           </div>
 
+          {/* Debug Info */}
+          <div className="mt-4 p-2 bg-yellow-100 border border-yellow-300 rounded text-xs">
+            Debug: isUploading={isUploading.toString()}, isTranslating={isTranslating.toString()}, stage={uploadProgress.stage}, progress={uploadProgress.progress}
+          </div>
+
           {/* Progress Indicator */}
           {(isUploading || isTranslating) && (
-            <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <div className="mt-6 bg-blue-100 border-2 border-blue-300 rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-700">
-                  {uploadProgress.message || (isUploading ? 'Uploading...' : 'Translating...')}
+                  🚀 PROGRESS: {uploadProgress.message || (isUploading ? 'Uploading...' : 'Translating...')}
                 </span>
                 <span className="text-sm text-gray-500">
                   {uploadProgress.progress || 0}%
