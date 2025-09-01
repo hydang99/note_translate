@@ -26,9 +26,6 @@ export default function Home() {
   });
 
   const [currentNote, setCurrentNote] = useState(null);
-  const [abortController, setAbortController] = useState(null);
-  const [progressInterval, setProgressInterval] = useState(null);
-  const [processingNoteId, setProcessingNoteId] = useState(null);
 
   useEffect(() => {
     checkCurrentNote();
@@ -66,55 +63,6 @@ export default function Home() {
     toast.success('Current note cleared');
   };
 
-  const handleCancel = async () => {
-    console.log('🛑 Cancelling upload/processing...');
-    
-    // Cancel the fetch request if it's in progress
-    if (abortController) {
-      abortController.abort();
-      console.log('✅ Fetch request cancelled');
-    }
-    
-    // Clear the progress polling interval
-    if (progressInterval) {
-      clearInterval(progressInterval);
-      setProgressInterval(null);
-      console.log('✅ Progress polling cancelled');
-    }
-    
-    // Try to cancel backend processing if we have a note ID
-    console.log('🔍 Processing note ID for cancellation:', processingNoteId);
-    if (processingNoteId) {
-      try {
-        console.log(`🛑 Calling cancel endpoint for note ID: ${processingNoteId}`);
-        await notesAPI.cancelProcessing(processingNoteId);
-        console.log('✅ Backend processing cancellation requested');
-      } catch (error) {
-        console.log('⚠️ Could not cancel backend processing:', error);
-      }
-    } else {
-      console.log('⚠️ No processing note ID available for backend cancellation');
-    }
-    
-    // Reset all states
-    setIsUploading(false);
-    setIsTranslating(false);
-    setUploadProgress({
-      stage: '',
-      message: '',
-      progress: 0,
-      currentPage: 0,
-      totalPages: 0
-    });
-    
-    // Clear the abort controller and processing note ID
-    setAbortController(null);
-    setProcessingNoteId(null);
-    
-    toast.success('Process cancelled successfully');
-    console.log('🛑 Upload/processing cancelled');
-  };
-
   const handleFileSelect = (file) => {
     console.log('File selected:', file);
     setSelectedFile(file);
@@ -136,10 +84,6 @@ export default function Home() {
     // Allow guest users to upload and try the system
     // They'll be prompted to login when trying to save
 
-    // Create a new abort controller for this upload
-    const controller = new AbortController();
-    setAbortController(controller);
-    
     setIsUploading(true);
     setUploadProgress({
       stage: 'uploading',
@@ -194,12 +138,8 @@ export default function Home() {
         totalPages: 0
       });
 
-      const response = await notesAPI.create(formData, { signal: controller.signal });
+      const response = await notesAPI.create(formData);
       const note = response.data;
-      
-      // Store the current note for cancellation purposes
-      setCurrentNote(note);
-      setProcessingNoteId(note.id);
       
       // Get progress information from the backend
       try {
@@ -254,8 +194,7 @@ export default function Home() {
 
       // Start polling for progress updates during translation
       let progressCounter = 0;
-      const interval = setInterval(async () => {
-        setProgressInterval(interval);
+      const progressInterval = setInterval(async () => {
         try {
           const progressResponse = await notesAPI.getProgress(note.id);
           const progressData = progressResponse.data;
@@ -283,8 +222,7 @@ export default function Home() {
         };
         
         // Clear the progress polling interval
-        clearInterval(interval);
-        setProgressInterval(null);
+        clearInterval(progressInterval);
         
         setUploadProgress({
           stage: 'complete',
@@ -299,17 +237,13 @@ export default function Home() {
         // Small delay to show completion
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Clear processing note ID since we're done
-        setProcessingNoteId(null);
-        
         // Navigate to the note with translation already loaded
         navigate(`/notes/${note.id}`, { state: { note: updatedNote } });
       } catch (translateError) {
         console.error('Translation error:', translateError);
         
         // Clear the progress polling interval
-        clearInterval(interval);
-        setProgressInterval(null);
+        clearInterval(progressInterval);
         
         setUploadProgress({
           stage: 'error',
@@ -323,8 +257,6 @@ export default function Home() {
         navigate(`/notes/${note.id}`);
       } finally {
         setIsTranslating(false);
-        // Clear processing note ID
-        setProcessingNoteId(null);
       }
     } catch (error) {
       console.error('Upload error:', error);
@@ -417,7 +349,7 @@ export default function Home() {
         <div className="text-center p-6">
           <Zap className="h-12 w-12 text-primary-600 mx-auto mb-4" />
           <h3 className="text-lg font-semibold mb-2">Side-by-Side View</h3>
-          <p className="text-gray-600">Compare original and translation
+          <p className="text-gray-600">Compare original and ls
           d content easily</p>
         </div>
       </div>
@@ -520,17 +452,6 @@ export default function Home() {
                 {uploadProgress.stage === 'error' && 'Something went wrong. Please try again.'}
                 {!uploadProgress.stage && isUploading && 'Preparing your upload...'}
                 {!uploadProgress.stage && isTranslating && 'Processing your request...'}
-              </div>
-              
-              {/* Cancel Button */}
-              <div className="mt-4 flex justify-center">
-                <button
-                  onClick={handleCancel}
-                  className="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 transition-colors flex items-center space-x-2"
-                >
-                  <X className="h-4 w-4" />
-                  <span>Cancel Process</span>
-                </button>
               </div>
             </div>
           )}

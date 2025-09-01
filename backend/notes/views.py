@@ -190,40 +190,6 @@ class NoteViewSet(viewsets.ModelViewSet):
         })
     
     @action(detail=True, methods=['post'])
-    def cancel_processing(self, request, pk=None):
-        """Cancel ongoing processing for a note"""
-        try:
-            note = self.get_object()
-            note_id = str(note.id)
-            print(f"🛑 Cancelling processing for note {note_id}")
-            
-            # Cancel the note using the global cancellation registry
-            from .cancellation import cancellation_registry
-            cancelled = cancellation_registry.cancel_note(note_id)
-            
-            if cancelled:
-                print(f"✅ Processing cancelled for note {note_id}")
-                return Response({
-                    'status': 'cancelled',
-                    'message': 'Processing cancelled successfully',
-                    'note_id': note_id
-                })
-            else:
-                print(f"⚠️  Note {note_id} not currently being processed")
-                return Response({
-                    'status': 'not_processing',
-                    'message': 'Note not currently being processed',
-                    'note_id': note_id
-                })
-            
-        except Exception as e:
-            print(f"❌ Error cancelling processing: {e}")
-            return Response(
-                {'error': f'Failed to cancel processing: {str(e)}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    
-    @action(detail=True, methods=['post'])
     def re_extract_text(self, request, pk=None):
         """Re-extract text from uploaded file with improved formatting"""
         note = self.get_object()
