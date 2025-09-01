@@ -631,10 +631,19 @@ export default function SideBySideViewer({
         const container = range.commonAncestorContainer;
         let fullText = '';
         
-        if (container.nodeType === Node.TEXT_NODE) {
-          fullText = container.textContent;
+        // Try to get the full text from the current page content
+        if (currentPage && originalPages[currentPage - 1]) {
+          // Use the parsed page content for better context
+          fullText = originalPages[currentPage - 1].content || '';
+          console.log(`📄 Using page ${currentPage} content for context extraction`);
         } else {
-          fullText = container.innerText || container.textContent;
+          // Fallback to DOM container text
+          if (container.nodeType === Node.TEXT_NODE) {
+            fullText = container.textContent;
+          } else {
+            fullText = container.innerText || container.textContent;
+          }
+          console.log(`📄 Using DOM container text for context extraction`);
         }
         
         // Find the position of the selected text in the full text
@@ -650,6 +659,18 @@ export default function SideBySideViewer({
           
           let contextText = fullText.substring(startIndex, endIndex).trim();
           
+          // Ensure the selected word is included in the context
+          if (!contextText.includes(text)) {
+            console.log('⚠️  Selected word not found in context, adjusting...');
+            // If word was cut off, expand context to include it
+            const wordStartIndex = fullText.indexOf(text, startIndex);
+            if (wordStartIndex !== -1) {
+              const newStartIndex = Math.max(0, wordStartIndex - contextLength);
+              const newEndIndex = Math.min(fullText.length, wordStartIndex + text.length + contextLength);
+              contextText = fullText.substring(newStartIndex, newEndIndex).trim();
+            }
+          }
+          
           // Try to start and end at word boundaries for cleaner context
           const words = contextText.split(' ');
           if (words.length > 3) {
@@ -663,8 +684,22 @@ export default function SideBySideViewer({
             contextText = words.join(' ');
           }
           
+          // Final check: ensure the selected word is still in the context
           if (contextText && contextText.trim().length > 0) {
-            contextSentence = contextText.trim();
+            if (contextText.includes(text)) {
+              contextSentence = contextText.trim();
+              console.log(`✅ Context extracted successfully: "${text}" found in context`);
+            } else {
+              console.log('❌ Selected word still not in context after processing');
+              // Fallback: use a smaller context that definitely includes the word
+              const wordIndex = fullText.indexOf(text);
+              if (wordIndex !== -1) {
+                const fallbackStart = Math.max(0, wordIndex - 100);
+                const fallbackEnd = Math.min(fullText.length, wordIndex + text.length + 100);
+                contextSentence = fullText.substring(fallbackStart, fallbackEnd).trim();
+                console.log('🔄 Using fallback context extraction');
+              }
+            }
           }
         }
       } catch (error) {
@@ -679,6 +714,9 @@ export default function SideBySideViewer({
       // The selection will be cleared when they click elsewhere or select new text
       
       // Get definition for the selected word
+      console.log(`🔍 Getting definition for: "${text}"`);
+      console.log(`📖 Context being sent: "${contextSentence}"`);
+      console.log(`📏 Context length: ${contextSentence ? contextSentence.length : 0} characters`);
       getWordDefinition(text);
     }
     // Don't close popup if no text selected - let user explicitly close it
