@@ -39,8 +39,7 @@ export default function SideBySideViewer({
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
-  const [syncScrolling, setSyncScrolling] = useState(false);
-  const [isSyncActive, setIsSyncActive] = useState(false);
+  const [alignedSections, setAlignedSections] = useState(new Set());
   
   const leftPaneRef = useRef(null);
   const rightPaneRef = useRef(null);
@@ -55,11 +54,8 @@ export default function SideBySideViewer({
     };
   }, []);
 
-  // Section-based navigation system
+  // Section-based navigation system with alignment tracking
   const handleSectionClick = (event, isLeftPane) => {
-    // Only work when sync is off (we want section navigation instead)
-    if (syncScrolling) return;
-    
     const clickedElement = event.target;
     const container = isLeftPane ? leftPaneRef.current : rightPaneRef.current;
     const targetContainer = isLeftPane ? rightPaneRef.current : leftPaneRef.current;
@@ -95,12 +91,47 @@ export default function SideBySideViewer({
       behavior: 'smooth'
     });
     
-    // Add visual feedback
-    sectionElement.style.backgroundColor = '#fef3c7';
-    sectionElement.style.transition = 'background-color 0.3s ease';
+    // Generate a unique identifier for this alignment
+    const alignmentId = `${isLeftPane ? 'left' : 'right'}-${Math.round(scrollPercentage * 100)}`;
+    
+    // Add to aligned sections
+    setAlignedSections(prev => new Set([...prev, alignmentId]));
+    
+    // Add visual feedback to both sections
+    sectionElement.style.backgroundColor = '#dbeafe';
+    sectionElement.style.borderLeft = '4px solid #3b82f6';
+    sectionElement.style.transition = 'all 0.3s ease';
+    
+    // Find and highlight the corresponding section in the target container
+    setTimeout(() => {
+      const targetSections = targetContainer.querySelectorAll('.clickable-section');
+      const targetSection = targetSections[Math.floor(scrollPercentage * targetSections.length)];
+      
+      if (targetSection) {
+        targetSection.style.backgroundColor = '#dbeafe';
+        targetSection.style.borderLeft = '4px solid #3b82f6';
+        targetSection.style.transition = 'all 0.3s ease';
+      }
+    }, 300);
+    
+    // Clear alignment indicators after 3 seconds
     setTimeout(() => {
       sectionElement.style.backgroundColor = '';
-    }, 1000);
+      sectionElement.style.borderLeft = '';
+      
+      const targetSections = targetContainer.querySelectorAll('.clickable-section');
+      const targetSection = targetSections[Math.floor(scrollPercentage * targetSections.length)];
+      if (targetSection) {
+        targetSection.style.backgroundColor = '';
+        targetSection.style.borderLeft = '';
+      }
+      
+      setAlignedSections(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(alignmentId);
+        return newSet;
+      });
+    }, 3000);
   };
 
   // Helper functions for editing
@@ -166,84 +197,22 @@ export default function SideBySideViewer({
     return cleanText.replace(/\n/g, '\\n');
   };
 
-  // Enhanced synchronized scrolling with better content alignment
+  // Simple scroll handlers (no sync)
   const handleLeftPaneScroll = (e) => {
-    if (isScrolling || !syncScrolling) return;
-    
-    // Clear any existing timeout
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
-    }
-    
-    setIsScrolling(true);
-    setIsSyncActive(true);
-    const leftPane = e.target;
-    const rightPane = rightPaneRef.current;
-    
-    if (rightPane && leftPane.scrollHeight > leftPane.clientHeight) {
-      // Calculate scroll progress (0 to 1)
-      const leftScrollProgress = leftPane.scrollTop / (leftPane.scrollHeight - leftPane.clientHeight);
-      
-      // Apply the same progress to the right pane
-      const rightMaxScroll = rightPane.scrollHeight - rightPane.clientHeight;
-      const rightTargetScrollTop = leftScrollProgress * rightMaxScroll;
-      
-      // Use smooth scrolling for better user experience
-      rightPane.scrollTo({
-        top: rightTargetScrollTop,
-        behavior: 'auto' // Use 'auto' for immediate response during user scroll
-      });
-    }
-    
-    // Debounce the scrolling flag reset
-    scrollTimeoutRef.current = setTimeout(() => {
-      setIsScrolling(false);
-      setIsSyncActive(false);
-    }, 100);
+    // No synchronized scrolling - just handle any other scroll events if needed
   };
 
   const handleRightPaneScroll = (e) => {
-    if (isScrolling || !syncScrolling) return;
-    
-    // Clear any existing timeout
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
-    }
-    
-    setIsScrolling(true);
-    setIsSyncActive(true);
-    const rightPane = e.target;
-    const leftPane = leftPaneRef.current;
-    
-    if (leftPane && rightPane.scrollHeight > rightPane.clientHeight) {
-      // Calculate scroll progress (0 to 1)
-      const rightScrollProgress = rightPane.scrollTop / (rightPane.scrollHeight - rightPane.clientHeight);
-      
-      // Apply the same progress to the left pane
-      const leftMaxScroll = leftPane.scrollHeight - leftPane.clientHeight;
-      const leftTargetScrollTop = rightScrollProgress * leftMaxScroll;
-      
-      // Use smooth scrolling for better user experience
-      leftPane.scrollTo({
-        top: leftTargetScrollTop,
-        behavior: 'auto' // Use 'auto' for immediate response during user scroll
-      });
-    }
-    
-    // Debounce the scrolling flag reset
-    scrollTimeoutRef.current = setTimeout(() => {
-      setIsScrolling(false);
-      setIsSyncActive(false);
-    }, 100);
+    // No synchronized scrolling - just handle any other scroll events if needed
   };
 
-  // Handle click on highlighted word to sync scroll to corresponding position
+  // Handle click on highlighted word to jump to corresponding position
   const handleWordClick = (word, event) => {
     event.preventDefault();
     event.stopPropagation();
     
-    // Only sync scroll if user explicitly wants it (e.g., double-click or Ctrl+click) AND sync is enabled
-    if ((!event.ctrlKey && !event.metaKey && event.detail !== 2) || !syncScrolling) {
+    // Only jump if user explicitly wants it (e.g., double-click or Ctrl+click)
+    if (!event.ctrlKey && !event.metaKey && event.detail !== 2) {
       return;
     }
     
@@ -266,7 +235,6 @@ export default function SideBySideViewer({
     const targetPane = isLeftPane ? rightPaneRef.current : leftPaneRef.current;
     
     if (targetPane) {
-      setIsScrolling(true);
       const targetScrollTop = scrollPercentage * (targetPane.scrollHeight - targetPane.clientHeight);
       
       // Smooth scroll to the target position
@@ -274,19 +242,6 @@ export default function SideBySideViewer({
         top: targetScrollTop,
         behavior: 'smooth'
       });
-      
-      // Also scroll the source pane to the same position for better alignment
-      if (syncScrolling) {
-        const sourcePane = isLeftPane ? leftPaneRef.current : rightPaneRef.current;
-        if (sourcePane) {
-          sourcePane.scrollTo({
-            top: targetScrollTop,
-            behavior: 'smooth'
-          });
-        }
-      }
-      
-      setTimeout(() => setIsScrolling(false), 500);
       
       // Show a brief visual feedback
       clickedElement.style.backgroundColor = '#fef3c7';
@@ -799,28 +754,15 @@ export default function SideBySideViewer({
             onChange={(e) => handlePageChange(parseInt(e.target.value))}
             className="w-16 px-2 py-1 text-sm border border-gray-300 rounded text-center"
           />
-          <button
-            onClick={() => setSyncScrolling(!syncScrolling)}
-            className={`flex items-center space-x-2 px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-              syncScrolling 
-                ? 'bg-blue-100 text-blue-700 border border-blue-200 hover:bg-blue-200 shadow-sm' 
-                : 'bg-green-100 text-green-700 border border-green-200 hover:bg-green-200 shadow-sm'
-            }`}
-            title={syncScrolling ? 'Disable synchronized scrolling' : 'Enable section-based navigation (click sections to jump)'}
-          >
-            <div className={`w-2 h-2 rounded-full transition-all duration-200 ${
-              syncScrolling 
-                ? (isSyncActive ? 'bg-green-500 animate-pulse' : 'bg-blue-500') 
-                : 'bg-green-500'
-            }`}></div>
-            <span>{syncScrolling ? 'Sync On' : 'Sections'}</span>
-            <div className="text-xs font-normal">
-              {syncScrolling 
-                ? (isSyncActive ? '(Syncing...)' : '(Scroll together)')
-                : '(Click to jump)'
-              }
-            </div>
-          </button>
+          <div className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded-md">
+            <div className="w-2 h-2 rounded-full bg-green-500"></div>
+            <span>Click sections to jump</span>
+            {alignedSections.size > 0 && (
+              <div className="text-xs text-blue-600 font-normal">
+                ({alignedSections.size} aligned)
+              </div>
+            )}
+          </div>
         </div>
 
         <button
