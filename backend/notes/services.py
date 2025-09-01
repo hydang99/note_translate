@@ -602,6 +602,7 @@ class TranslationService:
         detected_language = None
         
         # Check if content is page-based JSON or plain text
+        try:
             import json
             print(f"🔍 Attempting to parse content as JSON...")
             print(f"Content type: {type(note.content)}")
