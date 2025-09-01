@@ -455,6 +455,7 @@ export default function NoteViewer() {
           onSaveEditedOriginal={handleSaveEditedOriginal}
           onCancelEdit={handleCancelEdit}
           onReTranslate={handleReTranslate}
+          onClearTranslation={() => setNote(prev => ({ ...prev, translation: null }))}
           isSavingEdit={saving}
           isTranslatingEdit={translating}
         />

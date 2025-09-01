@@ -22,6 +22,7 @@ export default function SideBySideViewer({
   onSaveEditedOriginal,
   onCancelEdit,
   onReTranslate,
+  onClearTranslation,
   isSavingEdit = false,
   isTranslatingEdit = false
 }) {
@@ -905,7 +906,9 @@ export default function SideBySideViewer({
         if (translationData.status === 'cancelled') {
           toast.success('Translation cancelled successfully');
           // Reset translation state
-          setTranslatedContent(null);
+          if (onClearTranslation) {
+            onClearTranslation();
+          }
           setCurrentPage(1);
         }
       }
