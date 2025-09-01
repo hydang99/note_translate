@@ -192,12 +192,37 @@ export default function Home() {
         });
       }
 
+      // Start polling for progress updates during translation
+      let progressCounter = 0;
+      const progressInterval = setInterval(async () => {
+        try {
+          const progressResponse = await notesAPI.getProgress(note.id);
+          const progressData = progressResponse.data;
+          
+          progressCounter++;
+          const totalPages = progressData.total_pages || 0;
+          const simulatedCurrentPage = Math.min(progressCounter, totalPages);
+          
+          setUploadProgress(prev => ({
+            ...prev,
+            currentPage: simulatedCurrentPage,
+            totalPages: totalPages,
+            progress: Math.min(80 + (progressCounter * 3), 95) // Gradually increase progress
+          }));
+        } catch (error) {
+          console.log('Progress polling error:', error);
+        }
+      }, 3000); // Poll every 3 seconds
+
       try {
         const translateResponse = await notesAPI.translate(note.id);
         const updatedNote = {
           ...note,
           translation: translateResponse.data
         };
+        
+        // Clear the progress polling interval
+        clearInterval(progressInterval);
         
         setUploadProgress({
           stage: 'complete',
@@ -216,6 +241,10 @@ export default function Home() {
         navigate(`/notes/${note.id}`, { state: { note: updatedNote } });
       } catch (translateError) {
         console.error('Translation error:', translateError);
+        
+        // Clear the progress polling interval
+        clearInterval(progressInterval);
+        
         setUploadProgress({
           stage: 'error',
           message: 'Translation failed',

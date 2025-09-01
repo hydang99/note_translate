@@ -127,6 +127,7 @@ Extract the text maintaining proper sentence structure and formatting:""",
             start_time = time.time()
             
             pages_data = [None] * len(doc)  # Pre-allocate list to maintain order
+            completed_pages = 0  # Track completed pages
             
             # Use ThreadPoolExecutor for parallel processing
             # Limit to 3 concurrent requests to avoid overwhelming the API
@@ -143,6 +144,8 @@ Extract the text maintaining proper sentence structure and formatting:""",
                 for future in as_completed(future_to_page):
                     page_num, page_data = future.result()
                     pages_data[page_num] = page_data
+                    completed_pages += 1
+                    print(f"✅ Completed {completed_pages}/{len(doc)} pages")
             
             end_time = time.time()
             print(f"Parallel page processing completed in {end_time - start_time:.2f} seconds")
@@ -461,6 +464,7 @@ class TranslationService:
                 
                 print(f"Starting parallel translation of {len(pages_data)} pages...")
                 start_time = time.time()
+                completed_translations = 0
                 
                 # Use ThreadPoolExecutor for parallel processing
                 # Limit to 3 concurrent requests to avoid overwhelming the API
@@ -486,10 +490,11 @@ class TranslationService:
                             'content': translated_text
                         })
                         
+                        completed_translations += 1
                         if success:
-                            print(f"✅ Page {page_num} completed successfully")
+                            print(f"✅ Page {page_num} translated successfully ({completed_translations}/{len(pages_data)})")
                         else:
-                            print(f"❌ Page {page_num} failed, using original content")
+                            print(f"❌ Page {page_num} failed, using original content ({completed_translations}/{len(pages_data)})")
                 
                 end_time = time.time()
                 print(f"Parallel page translation completed in {end_time - start_time:.2f} seconds")
