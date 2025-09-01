@@ -263,7 +263,7 @@ export default function SideBySideViewer({
       }, 300); // Wait for scroll animation to complete
     }
     
-    // Clear visual feedback after 3 seconds
+    // Clear visual feedback after 1.5 seconds
     setTimeout(() => {
       sectionElement.style.backgroundColor = '';
       sectionElement.style.borderLeft = '';
@@ -272,7 +272,7 @@ export default function SideBySideViewer({
         targetSection.style.backgroundColor = '';
         targetSection.style.borderLeft = '';
       }
-    }, 3000);
+    }, 1500);
   };
 
   // Handle click on highlighted word to sync scroll to corresponding position
