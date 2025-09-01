@@ -933,6 +933,31 @@ export default function SideBySideViewer({
   const currentOriginalPage = originalPages[currentPage - 1] || '';
   const currentTranslatedPage = translatedPages[currentPage - 1] || '';
 
+  // Handle page refresh/unload - cancel any ongoing processing
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (isProcessing && noteId) {
+        // Try to cancel processing before page unloads
+        fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/'}notes/${noteId}/cancel_processing/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // Use sendBeacon for more reliable delivery during page unload
+          keepalive: true
+        }).catch(() => {}); // Ignore errors during unload
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Also cancel processing when component unmounts
+      if (isProcessing && noteId) {
+        handleCancelProcessing();
+      }
+    };
+  }, [noteId, isProcessing]);
+
   return (
     <div className="space-y-4">
               {/* Processing Progress Bar with Cancel Button */}
