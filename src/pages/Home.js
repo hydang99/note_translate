@@ -28,6 +28,7 @@ export default function Home() {
   const [currentNote, setCurrentNote] = useState(null);
   const [abortController, setAbortController] = useState(null);
   const [progressInterval, setProgressInterval] = useState(null);
+  const [processingNoteId, setProcessingNoteId] = useState(null);
 
   useEffect(() => {
     checkCurrentNote();
@@ -82,13 +83,17 @@ export default function Home() {
     }
     
     // Try to cancel backend processing if we have a note ID
-    if (currentNote?.id) {
+    console.log('🔍 Processing note ID for cancellation:', processingNoteId);
+    if (processingNoteId) {
       try {
-        await notesAPI.cancelProcessing(currentNote.id);
+        console.log(`🛑 Calling cancel endpoint for note ID: ${processingNoteId}`);
+        await notesAPI.cancelProcessing(processingNoteId);
         console.log('✅ Backend processing cancellation requested');
       } catch (error) {
         console.log('⚠️ Could not cancel backend processing:', error);
       }
+    } else {
+      console.log('⚠️ No processing note ID available for backend cancellation');
     }
     
     // Reset all states
@@ -102,8 +107,9 @@ export default function Home() {
       totalPages: 0
     });
     
-    // Clear the abort controller
+    // Clear the abort controller and processing note ID
     setAbortController(null);
+    setProcessingNoteId(null);
     
     toast.success('Process cancelled successfully');
     console.log('🛑 Upload/processing cancelled');
@@ -190,6 +196,10 @@ export default function Home() {
 
       const response = await notesAPI.create(formData, { signal: controller.signal });
       const note = response.data;
+      
+      // Store the current note for cancellation purposes
+      setCurrentNote(note);
+      setProcessingNoteId(note.id);
       
       // Get progress information from the backend
       try {
@@ -289,6 +299,9 @@ export default function Home() {
         // Small delay to show completion
         await new Promise(resolve => setTimeout(resolve, 500));
         
+        // Clear processing note ID since we're done
+        setProcessingNoteId(null);
+        
         // Navigate to the note with translation already loaded
         navigate(`/notes/${note.id}`, { state: { note: updatedNote } });
       } catch (translateError) {
@@ -310,6 +323,8 @@ export default function Home() {
         navigate(`/notes/${note.id}`);
       } finally {
         setIsTranslating(false);
+        // Clear processing note ID
+        setProcessingNoteId(null);
       }
     } catch (error) {
       console.error('Upload error:', error);
