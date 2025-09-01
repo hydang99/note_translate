@@ -4,7 +4,6 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.shortcuts import get_object_or_404
 from django.db import models
-from django.utils import timezone
 from .models import Note, Translation
 from .serializers import NoteSerializer, NoteCreateSerializer, TranslationSerializer
 from .services import NoteService, TranslationService
@@ -157,6 +156,36 @@ class NoteViewSet(viewsets.ModelViewSet):
         
         return Response({'status': 'success'})
     
+    @action(detail=True, methods=['post'])
+    def cancel_processing(self, request, pk=None):
+        """Cancel ongoing file processing or translation"""
+        try:
+            note = self.get_object()
+            print(f"Cancelling processing for note {note.id} - {note.title}")
+            
+            # Set a cancellation flag in the note
+            note.processing_cancelled = True
+            note.save()
+            
+            # Also cancel any ongoing translation
+            if hasattr(note, 'translation') and note.translation:
+                note.translation.processing_cancelled = True
+                note.translation.save()
+                print(f"Cancelled translation for note {note.id}")
+            
+            return Response({
+                'status': 'cancelled',
+                'message': 'Processing cancelled successfully',
+                'note_id': note.id
+            })
+            
+        except Exception as e:
+            print(f"Error cancelling processing: {e}")
+            return Response(
+                {'error': f'Failed to cancel processing: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
     @action(detail=True, methods=['get'])
     def progress(self, request, pk=None):
         """Get progress information for a note's processing"""
@@ -214,78 +243,6 @@ class NoteViewSet(viewsets.ModelViewSet):
             return Response(
                 {'error': f'Failed to re-extract text: {str(e)}'},
                 status=status.HTTP_400_BAD_REQUEST
-            )
-    
-    @action(detail=True, methods=['post'])
-    def cancel_file_processing(self, request, pk=None):
-        """Cancel ongoing file processing/upload"""
-        try:
-            note = self.get_object()
-            print(f"Cancel file processing request for note ID: {pk}")
-            
-            # Check if note is currently being processed
-            if hasattr(note, 'processing_status') and note.processing_status == 'processing':
-                # Mark note as cancelled
-                note.processing_status = 'cancelled'
-                note.save()
-                print(f"Note {note.id} file processing marked as cancelled")
-                
-                return Response({
-                    'status': 'cancelled',
-                    'message': 'File processing cancelled successfully',
-                    'note_id': note.id
-                })
-            else:
-                return Response({
-                    'status': 'no_processing',
-                    'message': 'No ongoing file processing to cancel'
-                })
-                
-        except Exception as e:
-            print(f"Error cancelling file processing: {str(e)}")
-            return Response(
-                {'error': f'Failed to cancel file processing: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-    
-    @action(detail=True, methods=['post'])
-    def cancel_translation(self, request, pk=None):
-        """Cancel ongoing translation processing"""
-        try:
-            note = self.get_object()
-            print(f"Cancel translation request for note ID: {pk}")
-            
-            # Check if there's an ongoing translation
-            try:
-                translation = Translation.objects.get(note=note)
-                if translation.translation_metadata and translation.translation_metadata.get('status') == 'processing':
-                    # Mark translation as cancelled
-                    translation.translation_metadata['status'] = 'cancelled'
-                    translation.translation_metadata['cancelled_at'] = timezone.now().isoformat()
-                    translation.save()
-                    print(f"Translation {translation.id} marked as cancelled")
-                    
-                    return Response({
-                        'status': 'cancelled',
-                        'message': 'Translation processing cancelled successfully',
-                        'translation_id': translation.id
-                    })
-                else:
-                    return Response({
-                        'status': 'no_processing',
-                        'message': 'No ongoing translation to cancel'
-                    })
-            except Translation.DoesNotExist:
-                return Response({
-                    'status': 'no_translation',
-                    'message': 'No translation found for this note'
-                })
-                
-        except Exception as e:
-            print(f"Error cancelling translation: {str(e)}")
-            return Response(
-                {'error': f'Failed to cancel translation: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
     @action(detail=False, methods=['get'])
