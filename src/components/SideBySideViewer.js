@@ -564,7 +564,7 @@ export default function SideBySideViewer({
           word: word,
           source_language: sourceLanguage,
           target_language: targetLanguage,
-          context: currentOriginalPage
+          context: contextSentence || word
         })
       });
       
@@ -624,30 +624,51 @@ export default function SideBySideViewer({
       
       console.log('Added word to highlights:', text);
       
-      // Get context sentence - try to get the sentence containing the selected text
+      // Get context around the selected word - extract surrounding text
       let contextSentence = text;
       try {
         const range = selection.getRangeAt(0);
         const container = range.commonAncestorContainer;
-        let sentenceText = '';
+        let fullText = '';
         
         if (container.nodeType === Node.TEXT_NODE) {
-          sentenceText = container.textContent;
+          fullText = container.textContent;
         } else {
-          sentenceText = container.innerText || container.textContent;
+          fullText = container.innerText || container.textContent;
         }
         
-        // Try to extract the sentence containing the selected text
-        const sentences = sentenceText.split(/[.!?]+/);
-        const selectedSentence = sentences.find(sentence => 
-          sentence.toLowerCase().includes(text.toLowerCase())
-        );
+        // Find the position of the selected text in the full text
+        const selectedTextLower = text.toLowerCase();
+        const fullTextLower = fullText.toLowerCase();
+        const textIndex = fullTextLower.indexOf(selectedTextLower);
         
-        if (selectedSentence && selectedSentence.trim().length > 0) {
-          contextSentence = selectedSentence.trim();
+        if (textIndex !== -1) {
+          // Extract context around the selected word (about 100-150 characters)
+          const contextLength = 75; // Characters before and after
+          const startIndex = Math.max(0, textIndex - contextLength);
+          const endIndex = Math.min(fullText.length, textIndex + text.length + contextLength);
+          
+          let contextText = fullText.substring(startIndex, endIndex).trim();
+          
+          // Try to start and end at word boundaries for cleaner context
+          const words = contextText.split(' ');
+          if (words.length > 3) {
+            // Remove first word if it's cut off, remove last word if it's cut off
+            if (startIndex > 0 && !fullText[startIndex - 1].match(/\s/)) {
+              words.shift(); // Remove first word if it's cut off
+            }
+            if (endIndex < fullText.length && !fullText[endIndex].match(/\s/)) {
+              words.pop(); // Remove last word if it's cut off
+            }
+            contextText = words.join(' ');
+          }
+          
+          if (contextText && contextText.trim().length > 0) {
+            contextSentence = contextText.trim();
+          }
         }
       } catch (error) {
-        console.log('Could not extract context sentence:', error);
+        console.log('Could not extract context around word:', error);
       }
       
       // Store context sentence for later use
