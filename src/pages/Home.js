@@ -91,13 +91,24 @@ export default function Home() {
         console.log('🛑 Cancelling backend processing for note:', currentNote.id);
         await notesAPI.cancel(currentNote.id);
         console.log('✅ Backend processing cancelled successfully');
+        
+        // Show success message
+        toast.success('Processing cancelled and note discarded');
       } catch (error) {
         console.log('⚠️ Could not cancel backend processing:', error);
-        // Continue with frontend cancellation even if backend fails
+        
+        // If it's a cancellation error, that's actually good - it means processing stopped
+        if (error.response?.data?.error?.includes('cancelled')) {
+          toast.success('Processing stopped successfully');
+        } else {
+          toast.error('Could not stop backend processing');
+        }
       }
+    } else {
+      toast.info('Process cancelled');
     }
     
-    // Reset all states
+    // Reset all states regardless of backend cancellation result
     setIsUploading(false);
     setIsTranslating(false);
     setUploadProgress({
@@ -111,8 +122,6 @@ export default function Home() {
     setTextContent('');
     setCurrentNote(null);
     setAbortController(null);
-    
-    toast.info('Process cancelled and note discarded');
   };
 
   const handleUpload = async () => {
