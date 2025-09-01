@@ -299,6 +299,30 @@ class TranslationService:
     def __init__(self):
         self.setup_gemini()
     
+    def log_memory_usage(self, stage=""):
+        """Log current memory usage to help with debugging"""
+        try:
+            process = psutil.Process()
+            memory_info = process.memory_info()
+            memory_mb = memory_info.rss / 1024 / 1024
+            print(f"Memory usage {stage}: {memory_mb:.1f} MB")
+            return memory_mb
+        except Exception as e:
+            print(f"Could not log memory usage: {e}")
+            return 0
+    
+    def check_memory_limit(self, limit_mb=500):
+        """Check if memory usage is within safe limits"""
+        try:
+            memory_mb = self.log_memory_usage("memory check")
+            if memory_mb > limit_mb:
+                print(f"⚠️  Memory usage {memory_mb:.1f} MB exceeds limit {limit_mb} MB")
+                return False
+            return True
+        except Exception as e:
+            print(f"Could not check memory limit: {e}")
+            return True  # Allow processing if we can't check
+    
     def setup_gemini(self):
         """Initialize AI service"""
         if settings.GEMINI_API_KEY:
