@@ -553,6 +553,12 @@ export default function SideBySideViewer({
 
   const getWordDefinition = async (word) => {
     setIsLoadingDefinition(true);
+    
+    // Debug: Log what context is being used
+    console.log(`🔍 getWordDefinition called for: "${word}"`);
+    console.log(`📖 Current contextSentence: "${contextSentence}"`);
+    console.log(`📏 Context length: ${contextSentence ? contextSentence.length : 0} characters`);
+    
     try {
       // Use AI to get definition and translation
       const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/'}translation/define/`, {
@@ -612,6 +618,11 @@ export default function SideBySideViewer({
     console.log('Text selection:', text, 'Length:', text.length);
     
     if (text && text.length > 0) { // Allow any non-empty text selection
+      // Clear previous context and word definition
+      setContextSentence('');
+      setWordDefinition(null);
+      setCurrentWordDefinition(null);
+      
       setSelectedText(text);
       setShowVocabPopup(true);
       
@@ -625,7 +636,7 @@ export default function SideBySideViewer({
       console.log('Added word to highlights:', text);
       
       // Get context around the selected word - extract surrounding text
-      let contextSentence = text;
+      let contextSentence = ''; // Start with empty context
       try {
         const range = selection.getRangeAt(0);
         const container = range.commonAncestorContainer;
@@ -714,6 +725,10 @@ export default function SideBySideViewer({
       // Store context sentence for later use
       setSelectedText(text);
       setContextSentence(contextSentence);
+      
+      // Debug: Log the context that will be stored
+      console.log(`💾 Storing context for "${text}": "${contextSentence}"`);
+      console.log(`📏 Context length to store: ${contextSentence ? contextSentence.length : 0} characters`);
       
       // Don't clear the selection immediately - let the user see what they selected
       // The selection will be cleared when they click elsewhere or select new text
