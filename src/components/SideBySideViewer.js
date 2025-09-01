@@ -39,6 +39,7 @@ export default function SideBySideViewer({
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [syncScrolling, setSyncScrolling] = useState(true);
   
   const leftPaneRef = useRef(null);
   const rightPaneRef = useRef(null);
@@ -116,9 +117,9 @@ export default function SideBySideViewer({
     return cleanText.replace(/\n/g, '\\n');
   };
 
-  // Improved synchronized scrolling with debouncing
+  // Smart synchronized scrolling that handles different content lengths
   const handleLeftPaneScroll = (e) => {
-    if (isScrolling) return;
+    if (isScrolling || !syncScrolling) return;
     
     // Clear any existing timeout
     if (scrollTimeoutRef.current) {
@@ -130,24 +131,37 @@ export default function SideBySideViewer({
     const rightPane = rightPaneRef.current;
     
     if (rightPane && leftPane.scrollHeight > leftPane.clientHeight) {
-      // Use a more stable scrolling approach
-      const leftScrollRatio = leftPane.scrollTop / (leftPane.scrollHeight - leftPane.clientHeight);
-      const targetScrollTop = leftScrollRatio * (rightPane.scrollHeight - rightPane.clientHeight);
+      // Get the visible content area of the left pane
+      const leftVisibleTop = leftPane.scrollTop;
+      const leftVisibleBottom = leftPane.scrollTop + leftPane.clientHeight;
+      const leftContentHeight = leftPane.scrollHeight;
+      
+      // Calculate what percentage of content is visible
+      const leftVisibleStartRatio = leftVisibleTop / leftContentHeight;
+      const leftVisibleEndRatio = leftVisibleBottom / leftContentHeight;
+      
+      // Apply the same ratios to the right pane
+      const rightContentHeight = rightPane.scrollHeight;
+      const rightTargetTop = leftVisibleStartRatio * rightContentHeight;
+      const rightTargetBottom = leftVisibleEndRatio * rightContentHeight;
+      
+      // Calculate the target scroll position to keep the same content visible
+      const rightTargetScrollTop = rightTargetTop;
       
       // Only scroll if the difference is significant to avoid micro-adjustments
-      if (Math.abs(rightPane.scrollTop - targetScrollTop) > 5) {
-        rightPane.scrollTop = targetScrollTop;
+      if (Math.abs(rightPane.scrollTop - rightTargetScrollTop) > 10) {
+        rightPane.scrollTop = rightTargetScrollTop;
       }
     }
     
     // Debounce the scrolling flag reset
     scrollTimeoutRef.current = setTimeout(() => {
       setIsScrolling(false);
-    }, 100);
+    }, 150);
   };
 
   const handleRightPaneScroll = (e) => {
-    if (isScrolling) return;
+    if (isScrolling || !syncScrolling) return;
     
     // Clear any existing timeout
     if (scrollTimeoutRef.current) {
@@ -159,20 +173,33 @@ export default function SideBySideViewer({
     const leftPane = leftPaneRef.current;
     
     if (leftPane && rightPane.scrollHeight > rightPane.clientHeight) {
-      // Use a more stable scrolling approach
-      const rightScrollRatio = rightPane.scrollTop / (rightPane.scrollHeight - rightPane.clientHeight);
-      const targetScrollTop = rightScrollRatio * (leftPane.scrollHeight - leftPane.clientHeight);
+      // Get the visible content area of the right pane
+      const rightVisibleTop = rightPane.scrollTop;
+      const rightVisibleBottom = rightPane.scrollTop + rightPane.clientHeight;
+      const rightContentHeight = rightPane.scrollHeight;
+      
+      // Calculate what percentage of content is visible
+      const rightVisibleStartRatio = rightVisibleTop / rightContentHeight;
+      const rightVisibleEndRatio = rightVisibleBottom / rightContentHeight;
+      
+      // Apply the same ratios to the left pane
+      const leftContentHeight = leftPane.scrollHeight;
+      const leftTargetTop = rightVisibleStartRatio * leftContentHeight;
+      const leftTargetBottom = rightVisibleEndRatio * leftContentHeight;
+      
+      // Calculate the target scroll position to keep the same content visible
+      const leftTargetScrollTop = leftTargetTop;
       
       // Only scroll if the difference is significant to avoid micro-adjustments
-      if (Math.abs(leftPane.scrollTop - targetScrollTop) > 5) {
-        leftPane.scrollTop = targetScrollTop;
+      if (Math.abs(leftPane.scrollTop - leftTargetScrollTop) > 10) {
+        leftPane.scrollTop = leftTargetScrollTop;
       }
     }
     
     // Debounce the scrolling flag reset
     scrollTimeoutRef.current = setTimeout(() => {
       setIsScrolling(false);
-    }, 100);
+    }, 150);
   };
 
   // Handle click on highlighted word to sync scroll to corresponding position
@@ -180,8 +207,8 @@ export default function SideBySideViewer({
     event.preventDefault();
     event.stopPropagation();
     
-    // Only sync scroll if user explicitly wants it (e.g., double-click or Ctrl+click)
-    if (!event.ctrlKey && !event.metaKey && event.detail !== 2) {
+    // Only sync scroll if user explicitly wants it (e.g., double-click or Ctrl+click) AND sync is enabled
+    if ((!event.ctrlKey && !event.metaKey && event.detail !== 2) || !syncScrolling) {
       return;
     }
     
@@ -726,6 +753,18 @@ export default function SideBySideViewer({
             onChange={(e) => handlePageChange(parseInt(e.target.value))}
             className="w-16 px-2 py-1 text-sm border border-gray-300 rounded text-center"
           />
+          <button
+            onClick={() => setSyncScrolling(!syncScrolling)}
+            className={`flex items-center space-x-2 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+              syncScrolling 
+                ? 'bg-blue-100 text-blue-700 border border-blue-200 hover:bg-blue-200' 
+                : 'bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200'
+            }`}
+            title={syncScrolling ? 'Disable synchronized scrolling' : 'Enable synchronized scrolling'}
+          >
+            <div className={`w-2 h-2 rounded-full ${syncScrolling ? 'bg-blue-500' : 'bg-gray-400'}`}></div>
+            <span>{syncScrolling ? 'Sync On' : 'Sync Off'}</span>
+          </button>
         </div>
 
         <button
