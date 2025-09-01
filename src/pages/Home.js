@@ -88,7 +88,7 @@ export default function Home() {
       message: 'Preparing upload...',
       progress: 10
     });
-    console.log('Progress set to:', { stage: 'uploading', message: 'Preparing upload...', progress: 10 });
+    console.log('Progress set:', { stage: 'uploading', message: 'Preparing upload...', progress: 10 });
 
     try {
       const formData = new FormData();
@@ -130,6 +130,7 @@ export default function Home() {
         message: 'Uploading to server...',
         progress: 40
       });
+      console.log('Progress updated to 40% - Uploading to server');
 
       const response = await notesAPI.create(formData);
       const note = response.data;
@@ -139,6 +140,7 @@ export default function Home() {
         message: 'Extracting text from document...',
         progress: 60
       });
+      console.log('Progress updated to 60% - Extracting text');
 
       toast.success('Note uploaded successfully!');
       
@@ -149,6 +151,7 @@ export default function Home() {
         message: 'Translating content...',
         progress: 80
       });
+      console.log('Progress updated to 80% - Translating content');
 
       try {
         const translateResponse = await notesAPI.translate(note.id);
@@ -330,10 +333,10 @@ export default function Home() {
             <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-700">
-                  {uploadProgress.message || (isUploading ? 'Preparing upload...' : 'Translating...')}
+                  {uploadProgress.message || (isUploading ? 'Uploading...' : 'Translating...')}
                 </span>
                 <span className="text-sm text-gray-500">
-                  {uploadProgress.progress || (isUploading ? 25 : 75)}%
+                  {uploadProgress.progress || 0}%
                 </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
@@ -345,7 +348,7 @@ export default function Home() {
                       ? 'bg-green-500'
                       : 'bg-primary-500'
                   }`}
-                  style={{ width: `${uploadProgress.progress || (isUploading ? 25 : 75)}%` }}
+                  style={{ width: `${uploadProgress.progress || 0}%` }}
                 ></div>
               </div>
               <div className="mt-2 text-xs text-gray-500">
