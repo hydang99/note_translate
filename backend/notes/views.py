@@ -229,12 +229,20 @@ class NoteViewSet(viewsets.ModelViewSet):
             note = self.get_object()
             print(f"🛑 Cancelling processing for note ID: {pk} - {note.title}")
             
+            # Request cancellation for this note (this will stop ongoing processing)
+            from .services import request_cancellation
+            request_cancellation(note.id)
+            
             # Delete the note and all associated data
             note_id = note.id
             note_title = note.title
             
             # Delete the note (this will cascade to translations and other related objects)
             note.delete()
+            
+            # Clear the cancellation request since the note is deleted
+            from .services import clear_cancellation_request
+            clear_cancellation_request(note_id)
             
             print(f"✅ Successfully cancelled and deleted note: {note_id} - {note_title}")
             

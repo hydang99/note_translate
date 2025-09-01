@@ -7,6 +7,23 @@ import google.generativeai as genai
 from django.conf import settings
 from .models import Note, Translation
 
+# Global cancellation tracking
+_cancellation_requests = set()
+
+def is_cancelled(note_id):
+    """Check if a note has been requested for cancellation"""
+    return str(note_id) in _cancellation_requests
+
+def request_cancellation(note_id):
+    """Request cancellation for a note"""
+    _cancellation_requests.add(str(note_id))
+    print(f"🛑 Cancellation requested for note: {note_id}")
+
+def clear_cancellation_request(note_id):
+    """Clear cancellation request for a note"""
+    _cancellation_requests.discard(str(note_id))
+    print(f"✅ Cancellation request cleared for note: {note_id}")
+
 
 class NoteService:
     """Service for handling note operations"""
@@ -61,7 +78,7 @@ class NoteService:
         # Try AI Vision first for better formatting preservation
         try:
             print("Attempting AI Vision extraction for better formatting...")
-            result = self.extract_text_from_pdf_with_vision(file_path)
+            result = self.extract_text_from_pdf_with_vision(file_path, note)
             print(f"AI Vision extraction successful, content length: {len(result) if result else 0}")
             return result
         except Exception as vision_error:
@@ -82,7 +99,7 @@ class NoteService:
                 print(f"PyPDF2 fallback also failed: {str(basic_error)}")
                 raise Exception(f"Error extracting text from PDF: AI Vision failed: {str(vision_error)}. PyPDF2 also failed: {str(basic_error)}")
     
-    def extract_text_from_pdf_with_vision(self, file_path):
+    def extract_text_from_pdf_with_vision(self, file_path, note=None):
         """Extract text from PDF using AI Vision API for better formatting"""
         try:
             import fitz  # PyMuPDF for converting PDF to images
@@ -177,6 +194,12 @@ Extract the text maintaining proper sentence structure and formatting:""",
                 batch_end = min(batch_start + batch_size, len(doc))
                 print(f"Processing batch {batch_start//batch_size + 1}/{(len(doc) + batch_size - 1)//batch_size} (pages {batch_start + 1}-{batch_end})")
                 
+                # Check for cancellation before processing each batch
+                if is_cancelled(note.id):
+                    print(f"🛑 Cancellation requested for note {note.id}, stopping PDF processing")
+                    doc.close()
+                    raise Exception("PDF processing cancelled by user")
+                
                 # Check memory before processing batch - Railway Hobby plan has 8GB RAM
                 if not self.check_memory_limit(1500):  # 1.5GB limit for Railway
                     print(f"⚠️  Memory limit exceeded, forcing cleanup before batch {batch_start//batch_size + 1}")
@@ -199,6 +222,13 @@ Extract the text maintaining proper sentence structure and formatting:""",
                     
                     # Collect batch results
                     for future in as_completed(future_to_page):
+                        # Check for cancellation during page processing
+                        if is_cancelled(note.id):
+                            print(f"🛑 Cancellation requested during page processing, stopping")
+                            executor.shutdown(wait=False)  # Shutdown executor immediately
+                            doc.close()
+                            raise Exception("PDF processing cancelled by user")
+                        
                         page_num, page_data = future.result()
                         batch_pages.append(page_data)
                         print(f"✅ Completed page {page_data['page_number']}")
@@ -253,6 +283,11 @@ Extract the text maintaining proper sentence structure and formatting:""",
         print(f"Processing uploaded file for note {note.id}")
         self.log_memory_usage("before file processing")
         
+        # Check for cancellation before starting
+        if is_cancelled(note.id):
+            print(f"🛑 Cancellation requested for note {note.id}, stopping file processing")
+            raise Exception("File processing cancelled by user")
+        
         # Check initial memory state - Railway Hobby plan has 8GB RAM
         if not self.check_memory_limit(1000):  # 1GB initial limit for Railway
             print("⚠️  High memory usage detected at start, forcing cleanup")
@@ -269,7 +304,7 @@ Extract the text maintaining proper sentence structure and formatting:""",
         try:
             if note.file_type == 'pdf':
                 print("Extracting text from PDF...")
-                content = self.extract_text_from_pdf(file_path)
+                content = self.extract_text_from_pdf(file_path, note)
             elif note.file_type == 'image':
                 print("Extracting text from image...")
                 content = self.extract_text_from_image(file_path)
@@ -278,6 +313,11 @@ Extract the text maintaining proper sentence structure and formatting:""",
                 # For text files, read directly
                 with open(file_path, 'r', encoding='utf-8') as file:
                     content = file.read()
+            
+            # Check for cancellation before saving
+            if is_cancelled(note.id):
+                print(f"🛑 Cancellation requested for note {note.id}, stopping before saving")
+                raise Exception("File processing cancelled by user")
             
             print(f"Extracted content length: {len(content) if content else 0}")
             
@@ -521,6 +561,11 @@ class TranslationService:
         if not note.content:
             raise Exception("Note has no content to translate")
         
+        # Check for cancellation before starting translation
+        if is_cancelled(note.id):
+            print(f"🛑 Cancellation requested for note {note.id}, stopping translation")
+            raise Exception("Translation cancelled by user")
+        
         print(f"Starting translation for note {note.id} - {note.title}")
         print(f"Content type: {type(note.content)}")
         print(f"Content length: {len(note.content) if note.content else 0}")
@@ -586,6 +631,12 @@ class TranslationService:
                     
                     # Collect results as they complete
                     for future in as_completed(future_to_page):
+                        # Check for cancellation during translation
+                        if is_cancelled(note.id):
+                            print(f"🛑 Cancellation requested during translation, stopping")
+                            executor.shutdown(wait=False)  # Shutdown executor immediately
+                            raise Exception("Translation cancelled by user")
+                        
                         page_num, translated_text, detected_lang, success = future.result()
                         
                         # Use the detected language from the first successful translation
