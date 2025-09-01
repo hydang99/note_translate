@@ -39,15 +39,15 @@ class NoteService:
             return True  # Allow processing if we can't check
     
     def get_optimal_batch_size(self, file_size_mb, page_count):
-        """Calculate optimal batch size based on file size and page count"""
+        """Calculate optimal batch size based on file size and page count - Railway Hobby plan has 8GB RAM"""
         if file_size_mb > 50:  # Very large files
-            return 3
+            return 5  # Increased from 3
         elif file_size_mb > 20:  # Large files
-            return 4
+            return 6  # Increased from 4
         elif file_size_mb > 10:  # Medium files
-            return 5
+            return 8  # Increased from 5
         else:  # Small files
-            return min(8, page_count)
+            return min(12, page_count)  # Increased from 8
     
     def setup_gemini(self):
         """Initialize AI service"""
@@ -177,8 +177,8 @@ Extract the text maintaining proper sentence structure and formatting:""",
                 batch_end = min(batch_start + batch_size, len(doc))
                 print(f"Processing batch {batch_start//batch_size + 1}/{(len(doc) + batch_size - 1)//batch_size} (pages {batch_start + 1}-{batch_end})")
                 
-                # Check memory before processing batch
-                if not self.check_memory_limit(500):  # 500MB limit
+                # Check memory before processing batch - Railway Hobby plan has 8GB RAM
+                if not self.check_memory_limit(1500):  # 1.5GB limit for Railway
                     print(f"⚠️  Memory limit exceeded, forcing cleanup before batch {batch_start//batch_size + 1}")
                     gc.collect()
                     time.sleep(1)  # Give system time to free memory
@@ -253,8 +253,8 @@ Extract the text maintaining proper sentence structure and formatting:""",
         print(f"Processing uploaded file for note {note.id}")
         self.log_memory_usage("before file processing")
         
-        # Check initial memory state
-        if not self.check_memory_limit(400):  # 400MB initial limit
+        # Check initial memory state - Railway Hobby plan has 8GB RAM
+        if not self.check_memory_limit(1000):  # 1GB initial limit for Railway
             print("⚠️  High memory usage detected at start, forcing cleanup")
             gc.collect()
         

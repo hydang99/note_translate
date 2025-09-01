@@ -47,13 +47,22 @@ REQUEST_TIMEOUT = 1200  # 20 minutes for translation requests
 # Additional timeout settings for Railway
 TIMEOUT = 1200  # 20 minutes
 
-# Memory optimization settings
+# Memory optimization settings for Railway Hobby plan (8GB RAM)
 import gc
-gc.set_threshold(700, 10, 10)  # More aggressive garbage collection
+gc.set_threshold(500, 5, 5)  # Very aggressive garbage collection for Railway
 
-# Django memory settings
-DATA_UPLOAD_MAX_NUMBER_FIELDS = 1000  # Limit form fields
+# Django memory settings optimized for Railway
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 2000  # Increased for Railway
 FILE_UPLOAD_TEMP_DIR = '/tmp'  # Use temp directory for uploads
+
+# Railway-specific memory optimizations
+import os
+if os.getenv('RAILWAY_ENVIRONMENT'):
+    # We're on Railway, use more aggressive memory management
+    print("🚂 Railway environment detected - using optimized memory settings")
+    # Increase memory limits for Railway's 8GB RAM
+    FILE_UPLOAD_MAX_MEMORY_SIZE = 500 * 1024 * 1024  # 500MB per file
+    DATA_UPLOAD_MAX_MEMORY_SIZE = 500 * 1024 * 1024  # 500MB per request
 
 # CORS settings for production
 CORS_ALLOWED_ORIGINS = [
