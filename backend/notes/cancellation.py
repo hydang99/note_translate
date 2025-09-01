@@ -5,6 +5,7 @@ This allows us to cancel ongoing processes from different parts of the applicati
 
 import threading
 from typing import Dict, Set
+from .thread_manager import thread_manager
 
 class CancellationRegistry:
     """Global registry for tracking and cancelling note processing"""
@@ -35,6 +36,10 @@ class CancellationRegistry:
             if note_id in self._active_processes:
                 self._cancelled_notes.add(note_id)
                 print(f"🛑 Cancelled processing for note {note_id}")
+                
+                # Actually cancel the running threads
+                thread_manager.cancel_note(note_id)
+                
                 return True
             else:
                 print(f"⚠️  Note {note_id} not found in active processes")

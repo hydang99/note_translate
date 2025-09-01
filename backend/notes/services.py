@@ -7,6 +7,7 @@ import google.generativeai as genai
 from django.conf import settings
 from .models import Note, Translation
 from .cancellation import cancellation_registry
+from .thread_manager import thread_manager, check_cancellation
 
 
 class NoteService:
@@ -203,9 +204,15 @@ Extract the text maintaining proper sentence structure and formatting:""",
             print(f"File size: {file_size_mb:.1f} MB, using batch size: {batch_size}")
             pages_data = []
             
+            # Create thread manager executor for this note
+            note_id = getattr(self, 'current_note_id', 'unknown')
+            executor = thread_manager.create_executor(note_id, max_workers=2)
+            
             for batch_start in range(0, len(doc), batch_size):
                 # Check if processing has been cancelled
-                self.check_cancelled()
+                if check_cancellation(note_id):
+                    print(f"🛑 Processing cancelled for note {note_id}, stopping batch processing")
+                    break
                 
                 batch_end = min(batch_start + batch_size, len(doc))
                 print(f"Processing batch {batch_start//batch_size + 1}/{(len(doc) + batch_size - 1)//batch_size} (pages {batch_start + 1}-{batch_end})")
@@ -223,24 +230,35 @@ Extract the text maintaining proper sentence structure and formatting:""",
                         print(f"⚠️  Reduced batch size from {old_batch_size} to {batch_size} due to memory pressure")
                 
                 batch_pages = []
-                with ThreadPoolExecutor(max_workers=2) as executor:
-                    # Submit batch pages for processing
-                    future_to_page = {
-                        executor.submit(process_page, (page_num, doc.load_page(page_num))): page_num 
-                        for page_num in range(batch_start, batch_end)
-                    }
+                
+                # Submit batch pages for processing using thread manager
+                futures = []
+                for page_num in range(batch_start, batch_end):
+                    if check_cancellation(note_id):
+                        print(f"🛑 Processing cancelled for note {note_id}, stopping page submission")
+                        break
                     
-                    # Collect batch results
-                    for future in as_completed(future_to_page):
-                        # Check if processing has been cancelled
-                        self.check_cancelled()
-                        
-                        page_num, page_data = future.result()
+                    future = thread_manager.submit_task(note_id, process_page, (page_num, doc.load_page(page_num)))
+                    if future:
+                        futures.append(future)
+                
+                # Collect batch results
+                for future in futures:
+                    if check_cancellation(note_id):
+                        print(f"🛑 Processing cancelled for note {note_id}, stopping result collection")
+                        break
+                    
+                    try:
+                        page_num, page_data = future.result(timeout=30)  # 30 second timeout per page
                         batch_pages.append(page_data)
                         print(f"✅ Completed page {page_data['page_number']}")
+                    except Exception as e:
+                        print(f"❌ Page processing failed: {e}")
                 
                 # Check if processing has been cancelled after batch
-                self.check_cancelled()
+                if check_cancellation(note_id):
+                    print(f"🛑 Processing cancelled for note {note_id}, stopping batch processing")
+                    break
                 
                 # Add batch results to main list
                 pages_data.extend(batch_pages)
@@ -584,7 +602,6 @@ class TranslationService:
         detected_language = None
         
         # Check if content is page-based JSON or plain text
-        try:
             import json
             print(f"🔍 Attempting to parse content as JSON...")
             print(f"Content type: {type(note.content)}")
@@ -765,14 +782,6 @@ class TranslationService:
         self.log_memory_usage("after saving translation")
         
         return translation
-        
-        except Exception as e:
-            # Clear the current note even if translation fails
-            self.clear_current_note()
-            raise e
-        finally:
-            # Always clear the current note when done
-            self.clear_current_note()
 
     def get_word_definition(self, word, source_lang='en', target_lang='vi', context=''):
         """Get comprehensive word definition, translation, and context using AI"""
