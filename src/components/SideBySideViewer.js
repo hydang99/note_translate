@@ -39,7 +39,8 @@ export default function SideBySideViewer({
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
-  const [alignedSections, setAlignedSections] = useState(new Set());
+  const [syncScrolling, setSyncScrolling] = useState(false);
+  const [isSyncActive, setIsSyncActive] = useState(false);
   
   const leftPaneRef = useRef(null);
   const rightPaneRef = useRef(null);
@@ -53,86 +54,6 @@ export default function SideBySideViewer({
       }
     };
   }, []);
-
-  // Section-based navigation system with alignment tracking
-  const handleSectionClick = (event, isLeftPane) => {
-    const clickedElement = event.target;
-    const container = isLeftPane ? leftPaneRef.current : rightPaneRef.current;
-    const targetContainer = isLeftPane ? rightPaneRef.current : leftPaneRef.current;
-    
-    if (!container || !targetContainer) return;
-    
-    // Find the section (paragraph, heading, or block) that was clicked
-    let sectionElement = clickedElement;
-    while (sectionElement && sectionElement !== container) {
-      // Check if this element is a section (paragraph, heading, div, etc.)
-      if (sectionElement.tagName && ['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DIV', 'LI'].includes(sectionElement.tagName)) {
-        break;
-      }
-      sectionElement = sectionElement.parentElement;
-    }
-    
-    if (!sectionElement || sectionElement === container) return;
-    
-    // Get the position of the section relative to the container
-    const containerRect = container.getBoundingClientRect();
-    const sectionRect = sectionElement.getBoundingClientRect();
-    const relativeTop = sectionRect.top - containerRect.top + container.scrollTop;
-    
-    // Calculate scroll percentage
-    const scrollPercentage = relativeTop / (container.scrollHeight - container.clientHeight);
-    
-    // Scroll the target container to the same relative position
-    const targetScrollTop = scrollPercentage * (targetContainer.scrollHeight - targetContainer.clientHeight);
-    
-    // Smooth scroll to the target position
-    targetContainer.scrollTo({
-      top: targetScrollTop,
-      behavior: 'smooth'
-    });
-    
-    // Generate a unique identifier for this alignment
-    const alignmentId = `${isLeftPane ? 'left' : 'right'}-${Math.round(scrollPercentage * 100)}`;
-    
-    // Add to aligned sections
-    setAlignedSections(prev => new Set([...prev, alignmentId]));
-    
-    // Add visual feedback to both sections
-    sectionElement.style.backgroundColor = '#dbeafe';
-    sectionElement.style.borderLeft = '4px solid #3b82f6';
-    sectionElement.style.transition = 'all 0.3s ease';
-    
-    // Find and highlight the corresponding section in the target container
-    setTimeout(() => {
-      const targetSections = targetContainer.querySelectorAll('.clickable-section');
-      const targetSection = targetSections[Math.floor(scrollPercentage * targetSections.length)];
-      
-      if (targetSection) {
-        targetSection.style.backgroundColor = '#dbeafe';
-        targetSection.style.borderLeft = '4px solid #3b82f6';
-        targetSection.style.transition = 'all 0.3s ease';
-      }
-    }, 300);
-    
-    // Clear alignment indicators after 3 seconds
-    setTimeout(() => {
-      sectionElement.style.backgroundColor = '';
-      sectionElement.style.borderLeft = '';
-      
-      const targetSections = targetContainer.querySelectorAll('.clickable-section');
-      const targetSection = targetSections[Math.floor(scrollPercentage * targetSections.length)];
-      if (targetSection) {
-        targetSection.style.backgroundColor = '';
-        targetSection.style.borderLeft = '';
-      }
-      
-      setAlignedSections(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(alignmentId);
-        return newSet;
-      });
-    }, 3000);
-  };
 
   // Helper functions for editing
   const getCleanTextForEditing = (content) => {
@@ -197,22 +118,136 @@ export default function SideBySideViewer({
     return cleanText.replace(/\n/g, '\\n');
   };
 
-  // Simple scroll handlers (no sync)
+  // Enhanced synchronized scrolling with better content alignment
   const handleLeftPaneScroll = (e) => {
-    // No synchronized scrolling - just handle any other scroll events if needed
+    if (isScrolling || !syncScrolling) return;
+    
+    // Clear any existing timeout
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    
+    setIsScrolling(true);
+    setIsSyncActive(true);
+    const leftPane = e.target;
+    const rightPane = rightPaneRef.current;
+    
+    if (rightPane && leftPane.scrollHeight > leftPane.clientHeight) {
+      // Calculate scroll progress (0 to 1)
+      const leftScrollProgress = leftPane.scrollTop / (leftPane.scrollHeight - leftPane.clientHeight);
+      
+      // Apply the same progress to the right pane
+      const rightMaxScroll = rightPane.scrollHeight - rightPane.clientHeight;
+      const rightTargetScrollTop = leftScrollProgress * rightMaxScroll;
+      
+      // Use smooth scrolling for better user experience
+      rightPane.scrollTo({
+        top: rightTargetScrollTop,
+        behavior: 'auto' // Use 'auto' for immediate response during user scroll
+      });
+    }
+    
+    // Debounce the scrolling flag reset
+    scrollTimeoutRef.current = setTimeout(() => {
+      setIsScrolling(false);
+      setIsSyncActive(false);
+    }, 100);
   };
 
   const handleRightPaneScroll = (e) => {
-    // No synchronized scrolling - just handle any other scroll events if needed
+    if (isScrolling || !syncScrolling) return;
+    
+    // Clear any existing timeout
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    
+    setIsScrolling(true);
+    setIsSyncActive(true);
+    const rightPane = e.target;
+    const leftPane = leftPaneRef.current;
+    
+    if (leftPane && rightPane.scrollHeight > rightPane.clientHeight) {
+      // Calculate scroll progress (0 to 1)
+      const rightScrollProgress = rightPane.scrollTop / (rightPane.scrollHeight - rightPane.clientHeight);
+      
+      // Apply the same progress to the left pane
+      const leftMaxScroll = leftPane.scrollHeight - leftPane.clientHeight;
+      const leftTargetScrollTop = rightScrollProgress * leftMaxScroll;
+      
+      // Use smooth scrolling for better user experience
+      leftPane.scrollTo({
+        top: leftTargetScrollTop,
+        behavior: 'auto' // Use 'auto' for immediate response during user scroll
+      });
+    }
+    
+    // Debounce the scrolling flag reset
+    scrollTimeoutRef.current = setTimeout(() => {
+      setIsScrolling(false);
+      setIsSyncActive(false);
+    }, 100);
   };
 
-  // Handle click on highlighted word to jump to corresponding position
+  // Handle click on section to navigate to corresponding section in other pane
+  const handleSectionClick = (event, isLeftPane) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const clickedElement = event.target;
+    const container = isLeftPane ? leftPaneRef.current : rightPaneRef.current;
+    const targetContainer = isLeftPane ? rightPaneRef.current : leftPaneRef.current;
+    
+    if (!container || !targetContainer) return;
+    
+    // Find the section (paragraph, heading, or block) that was clicked
+    let sectionElement = clickedElement;
+    while (sectionElement && sectionElement !== container) {
+      // Check if this element is a section (paragraph, heading, div, etc.)
+      if (sectionElement.tagName && ['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DIV', 'LI'].includes(sectionElement.tagName)) {
+        break;
+      }
+      sectionElement = sectionElement.parentElement;
+    }
+    
+    if (!sectionElement || sectionElement === container) return;
+    
+    // Get the position of the section relative to the container
+    const containerRect = container.getBoundingClientRect();
+    const sectionRect = sectionElement.getBoundingClientRect();
+    const relativeTop = sectionRect.top - containerRect.top + container.scrollTop;
+    
+    // Calculate scroll percentage
+    const scrollPercentage = relativeTop / (container.scrollHeight - container.clientHeight);
+    
+    // Scroll the target container to the same relative position
+    const targetScrollTop = scrollPercentage * (targetContainer.scrollHeight - targetContainer.clientHeight);
+    
+    // Smooth scroll to the target position
+    targetContainer.scrollTo({
+      top: targetScrollTop,
+      behavior: 'smooth'
+    });
+    
+    // Add visual feedback to the clicked section
+    sectionElement.style.backgroundColor = '#dbeafe';
+    sectionElement.style.borderLeft = '4px solid #3b82f6';
+    sectionElement.style.transition = 'all 0.3s ease';
+    
+    // Clear visual feedback after 2 seconds
+    setTimeout(() => {
+      sectionElement.style.backgroundColor = '';
+      sectionElement.style.borderLeft = '';
+    }, 2000);
+  };
+
+  // Handle click on highlighted word to sync scroll to corresponding position
   const handleWordClick = (word, event) => {
     event.preventDefault();
     event.stopPropagation();
     
-    // Only jump if user explicitly wants it (e.g., double-click or Ctrl+click)
-    if (!event.ctrlKey && !event.metaKey && event.detail !== 2) {
+    // Only sync scroll if user explicitly wants it (e.g., double-click or Ctrl+click) AND sync is enabled
+    if ((!event.ctrlKey && !event.metaKey && event.detail !== 2) || !syncScrolling) {
       return;
     }
     
@@ -235,6 +270,7 @@ export default function SideBySideViewer({
     const targetPane = isLeftPane ? rightPaneRef.current : leftPaneRef.current;
     
     if (targetPane) {
+      setIsScrolling(true);
       const targetScrollTop = scrollPercentage * (targetPane.scrollHeight - targetPane.clientHeight);
       
       // Smooth scroll to the target position
@@ -242,6 +278,19 @@ export default function SideBySideViewer({
         top: targetScrollTop,
         behavior: 'smooth'
       });
+      
+      // Also scroll the source pane to the same position for better alignment
+      if (syncScrolling) {
+        const sourcePane = isLeftPane ? leftPaneRef.current : rightPaneRef.current;
+        if (sourcePane) {
+          sourcePane.scrollTo({
+            top: targetScrollTop,
+            behavior: 'smooth'
+          });
+        }
+      }
+      
+      setTimeout(() => setIsScrolling(false), 500);
       
       // Show a brief visual feedback
       clickedElement.style.backgroundColor = '#fef3c7';
@@ -757,11 +806,9 @@ export default function SideBySideViewer({
           <div className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded-md">
             <div className="w-2 h-2 rounded-full bg-green-500"></div>
             <span>Click sections to jump</span>
-            {alignedSections.size > 0 && (
-              <div className="text-xs text-blue-600 font-normal">
-                ({alignedSections.size} aligned)
-              </div>
-            )}
+            <div className="text-xs text-gray-500 font-normal">
+              (Click any section to navigate)
+            </div>
           </div>
         </div>
 
