@@ -714,6 +714,10 @@ class TranslationService:
     def get_word_definition(self, word, source_lang='en', target_lang='vi', context=''):
         """Get comprehensive word definition, translation, and context using AI"""
         try:
+            print(f"🔍 Getting definition for word: '{word}'")
+            print(f"📖 Context length: {len(context)} characters")
+            print(f"📖 Context preview: {context[:300]}...")
+            
             model = genai.GenerativeModel('gemini-2.5-flash')
             
             # If auto-detect, assume English for now
@@ -721,30 +725,33 @@ class TranslationService:
                 source_lang = 'en'
             
             prompt = f"""
-            Provide a concise analysis of the word/phrase: "{word}"
-            
-            Context from document: "{context[:300]}..."
-            
-            Please provide:
-            1. **Definition**: A brief, clear definition (max 2 sentences)
-            2. **Translation**: Translation to {target_lang} (if different from source language)
-            3. **Context**: How this word/phrase is used in the provided context (max 1 sentence)
-            4. **Example**: A short example sentence using this word/phrase
-            5. **Type**: Part of speech (noun, verb, adjective, etc.)
-            6. **Level**: Difficulty level (Beginner, Intermediate, Advanced)
-            
-            Format your response as JSON with these exact keys:
-            {{
-                "definition": "brief definition here",
-                "translation": "translation in {target_lang} or 'N/A (Already in {target_lang})'",
-                "context": "brief explanation of usage",
-                "example": "short example sentence",
-                "type": "part of speech",
-                "level": "difficulty level"
-            }}
-            
-            Keep all responses concise and to the point.
-            """
+Provide a comprehensive analysis of the word/phrase: "{word}"
+
+**Full Context from Document:**
+{context}
+
+Please provide:
+1. **Definition**: A clear, detailed definition that explains what this word/phrase means
+2. **Translation**: Accurate translation to {target_lang} (if different from source language)
+3. **Context Analysis**: Explain how this word/phrase is specifically used in the provided context. What does it contribute to the meaning? How does it relate to the surrounding text?
+4. **Example**: A relevant example sentence that shows how this word/phrase is used in context
+5. **Type**: Part of speech (noun, verb, adjective, adverb, phrase, etc.)
+6. **Level**: Difficulty level (Beginner, Intermediate, Advanced) based on complexity
+7. **Usage Notes**: Any important notes about how this word/phrase is used in academic/professional contexts
+
+Format your response as JSON with these exact keys:
+{{
+    "definition": "detailed definition here",
+    "translation": "translation in {target_lang} or 'N/A (Already in {target_lang})'",
+    "context": "detailed explanation of how the word contributes to the context",
+    "example": "relevant example sentence",
+    "type": "part of speech",
+    "level": "difficulty level",
+    "usage_notes": "important usage information"
+}}
+
+The context provided is the full paragraph/section where this word appears. Use it to provide a thorough analysis of how this specific word contributes to the meaning and flow of the text.
+"""
             
             response = model.generate_content(prompt)
             
@@ -770,7 +777,8 @@ class TranslationService:
                     "context": f"Used in the context: {context[:100]}...",
                     "example": f"Example: The word '{word}' is commonly used in academic texts.",
                     "type": "Unknown",
-                    "level": "Intermediate"
+                    "level": "Intermediate",
+                    "usage_notes": "Analysis based on AI response parsing"
                 }
             
             return definition_data
@@ -783,5 +791,6 @@ class TranslationService:
                 "context": f"Used in the provided context",
                 "example": f"Example: The term '{word}' appears in the document.",
                 "type": "Unknown",
-                "level": "Intermediate"
+                "level": "Intermediate",
+                "usage_notes": "Error occurred during analysis"
             }
