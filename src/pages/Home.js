@@ -328,9 +328,9 @@ export default function Home() {
             />
           </div>
 
-          {/* Debug Info - Vercel Test */}
-          <div className="mt-4 p-2 bg-yellow-100 border border-yellow-300 rounded text-xs">
-            🔍 DEBUG: isUploading={isUploading.toString()}, isTranslating={isTranslating.toString()}, stage={uploadProgress.stage}, progress={uploadProgress.progress}
+          {/* Debug Info - Vercel Test - FORCE DEPLOY */}
+          <div className="mt-4 p-2 bg-red-100 border-2 border-red-400 rounded text-sm font-bold">
+            🚨 FORCE DEPLOY TEST - DEBUG: isUploading={isUploading.toString()}, isTranslating={isTranslating.toString()}, stage={uploadProgress.stage}, progress={uploadProgress.progress}
           </div>
 
           {/* Progress Indicator */}
