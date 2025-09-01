@@ -47,6 +47,14 @@ REQUEST_TIMEOUT = 1200  # 20 minutes for translation requests
 # Additional timeout settings for Railway
 TIMEOUT = 1200  # 20 minutes
 
+# Memory optimization settings
+import gc
+gc.set_threshold(700, 10, 10)  # More aggressive garbage collection
+
+# Django memory settings
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 1000  # Limit form fields
+FILE_UPLOAD_TEMP_DIR = '/tmp'  # Use temp directory for uploads
+
 # CORS settings for production
 CORS_ALLOWED_ORIGINS = [
     "https://web-production-4646.up.railway.app",

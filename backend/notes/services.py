@@ -1,4 +1,6 @@
 import os
+import gc
+import psutil
 import PyPDF2
 from PIL import Image
 import google.generativeai as genai
@@ -11,6 +13,41 @@ class NoteService:
     
     def __init__(self):
         self.setup_gemini()
+    
+    def log_memory_usage(self, stage=""):
+        """Log current memory usage to help with debugging"""
+        try:
+            process = psutil.Process()
+            memory_info = process.memory_info()
+            memory_mb = memory_info.rss / 1024 / 1024
+            print(f"Memory usage {stage}: {memory_mb:.1f} MB")
+            return memory_mb
+        except Exception as e:
+            print(f"Could not log memory usage: {e}")
+            return 0
+    
+    def check_memory_limit(self, limit_mb=500):
+        """Check if memory usage is within safe limits"""
+        try:
+            memory_mb = self.log_memory_usage("memory check")
+            if memory_mb > limit_mb:
+                print(f"⚠️  Memory usage {memory_mb:.1f} MB exceeds limit {limit_mb} MB")
+                return False
+            return True
+        except Exception as e:
+            print(f"Could not check memory limit: {e}")
+            return True  # Allow processing if we can't check
+    
+    def get_optimal_batch_size(self, file_size_mb, page_count):
+        """Calculate optimal batch size based on file size and page count"""
+        if file_size_mb > 50:  # Very large files
+            return 3
+        elif file_size_mb > 20:  # Large files
+            return 4
+        elif file_size_mb > 10:  # Medium files
+            return 5
+        else:  # Small files
+            return min(8, page_count)
     
     def setup_gemini(self):
         """Initialize AI service"""
@@ -65,9 +102,8 @@ class NoteService:
                 print(f"Processing page {page_num + 1}/{len(doc)}")
                 
                 try:
-                    # Convert page to image
-                    mat = fitz.Matrix(2, 2)  # 2x zoom for better quality
-                    pix = page.get_pixmap(matrix=mat)
+                    # Convert page to image (no zoom to keep it simple)
+                    pix = page.get_pixmap()
                     img_data = pix.tobytes("png")
                     img = Image.open(io.BytesIO(img_data))
                     
@@ -107,6 +143,10 @@ Extract the text maintaining proper sentence structure and formatting:""",
                     page_text = page_text if page_text else ""
                     print(f"✅ Page {page_num + 1} processed successfully ({len(page_text)} characters)")
                     
+                    # Clean up memory after processing each page
+                    del img, pix, img_data, response
+                    gc.collect()
+                    
                     return page_num, {
                         'page_number': page_num + 1,
                         'content': page_text
@@ -119,45 +159,75 @@ Extract the text maintaining proper sentence structure and formatting:""",
                         'content': f"[Error processing page {page_num + 1}: {str(e)}]"
                     }
             
-            # Process pages in parallel for better performance
+            # Process pages in smaller batches to manage memory better
             from concurrent.futures import ThreadPoolExecutor, as_completed
             import time
             
-            print(f"Starting parallel processing of {len(doc)} pages...")
+            print(f"Starting batch processing of {len(doc)} pages...")
+            self.log_memory_usage("before batch processing")
             start_time = time.time()
             
-            pages_data = [None] * len(doc)  # Pre-allocate list to maintain order
-            completed_pages = 0  # Track completed pages
+            # Calculate optimal batch size based on file size
+            file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            batch_size = self.get_optimal_batch_size(file_size_mb, len(doc))
+            print(f"File size: {file_size_mb:.1f} MB, using batch size: {batch_size}")
+            pages_data = []
             
-            # Use ThreadPoolExecutor for parallel processing
-            # Limit to 3 concurrent requests to avoid overwhelming the API
-            max_workers = min(3, len(doc))
-            
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # Submit all pages for processing
-                future_to_page = {
-                    executor.submit(process_page, (page_num, doc.load_page(page_num))): page_num 
-                    for page_num in range(len(doc))
-                }
+            for batch_start in range(0, len(doc), batch_size):
+                batch_end = min(batch_start + batch_size, len(doc))
+                print(f"Processing batch {batch_start//batch_size + 1}/{(len(doc) + batch_size - 1)//batch_size} (pages {batch_start + 1}-{batch_end})")
                 
-                # Collect results as they complete
-                for future in as_completed(future_to_page):
-                    page_num, page_data = future.result()
-                    pages_data[page_num] = page_data
-                    completed_pages += 1
-                    print(f"✅ Completed {completed_pages}/{len(doc)} pages")
+                # Check memory before processing batch
+                if not self.check_memory_limit(500):  # 500MB limit
+                    print(f"⚠️  Memory limit exceeded, forcing cleanup before batch {batch_start//batch_size + 1}")
+                    gc.collect()
+                    time.sleep(1)  # Give system time to free memory
+                    
+                    # If still high memory, reduce batch size for remaining batches
+                    if batch_start + batch_size < len(doc):
+                        old_batch_size = batch_size
+                        batch_size = max(2, batch_size // 2)  # Reduce batch size but keep at least 2
+                        print(f"⚠️  Reduced batch size from {old_batch_size} to {batch_size} due to memory pressure")
+                
+                batch_pages = []
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    # Submit batch pages for processing
+                    future_to_page = {
+                        executor.submit(process_page, (page_num, doc.load_page(page_num))): page_num 
+                        for page_num in range(batch_start, batch_end)
+                    }
+                    
+                    # Collect batch results
+                    for future in as_completed(future_to_page):
+                        page_num, page_data = future.result()
+                        batch_pages.append(page_data)
+                        print(f"✅ Completed page {page_data['page_number']}")
+                
+                # Add batch results to main list
+                pages_data.extend(batch_pages)
+                
+                # Force memory cleanup after each batch
+                gc.collect()
+                self.log_memory_usage(f"after batch {batch_start//batch_size + 1}")
             
             end_time = time.time()
-            print(f"Parallel page processing completed in {end_time - start_time:.2f} seconds")
+            print(f"Batch processing completed in {end_time - start_time:.2f} seconds")
+            self.log_memory_usage("after batch processing")
             
-            # Remove None values and sort by page number
-            pages_data = [page for page in pages_data if page is not None]
+            # Sort pages by page number
             pages_data.sort(key=lambda x: x['page_number'])
             
             doc.close()
             
             # Store pages data as JSON in the content field
-            return json.dumps(pages_data)
+            result = json.dumps(pages_data)
+            
+            # Final memory cleanup
+            del pages_data, doc
+            gc.collect()
+            self.log_memory_usage("after final cleanup")
+            
+            return result
             
         except ImportError:
             # If PyMuPDF is not available, fall back to basic extraction
@@ -181,6 +251,12 @@ Extract the text maintaining proper sentence structure and formatting:""",
     def process_uploaded_file(self, note):
         """Process uploaded file and extract content"""
         print(f"Processing uploaded file for note {note.id}")
+        self.log_memory_usage("before file processing")
+        
+        # Check initial memory state
+        if not self.check_memory_limit(400):  # 400MB initial limit
+            print("⚠️  High memory usage detected at start, forcing cleanup")
+            gc.collect()
         
         if not note.file:
             print("No file attached to note")
@@ -209,6 +285,7 @@ Extract the text maintaining proper sentence structure and formatting:""",
             note.content = content
             note.save()
             print(f"Content saved to note {note.id}")
+            self.log_memory_usage("after file processing")
             return content
             
         except Exception as e:
@@ -421,6 +498,7 @@ class TranslationService:
             raise Exception("Note has no content to translate")
         
         print(f"Starting translation for note {note.id} - {note.title}")
+        self.log_memory_usage("before translation start")
         detected_language = None
         
         # Check if content is page-based JSON or plain text
@@ -463,12 +541,13 @@ class TranslationService:
                 import time
                 
                 print(f"Starting parallel translation of {len(pages_data)} pages...")
+                self.log_memory_usage("before translation")
                 start_time = time.time()
                 completed_translations = 0
                 
                 # Use ThreadPoolExecutor for parallel processing
-                # Limit to 3 concurrent requests to avoid overwhelming the API
-                max_workers = min(3, len(pages_data))
+                # Limit to 2 concurrent requests to reduce memory usage
+                max_workers = min(2, len(pages_data))
                 
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     # Submit all pages for translation
@@ -495,14 +574,23 @@ class TranslationService:
                             print(f"✅ Page {page_num} translated successfully ({completed_translations}/{len(pages_data)})")
                         else:
                             print(f"❌ Page {page_num} failed, using original content ({completed_translations}/{len(pages_data)})")
+                        
+                        # Clean up memory after each translation
+                        gc.collect()
                 
                 end_time = time.time()
                 print(f"Parallel page translation completed in {end_time - start_time:.2f} seconds")
+                self.log_memory_usage("after translation")
                 
                 # Sort pages by page number to maintain order
                 translated_pages.sort(key=lambda x: x['page_number'])
                 
                 translated_content = json.dumps(translated_pages)
+                
+                # Clean up memory after translation
+                del translated_pages
+                gc.collect()
+                self.log_memory_usage("after translation cleanup")
             else:
                 # Plain text content
                 result = self.translate_text(
@@ -560,6 +648,7 @@ class TranslationService:
         
         print(f"Translation completed. Content length: {len(translated_content) if translated_content else 0}")
         print(f"Translated content preview: {translated_content[:200] if translated_content else 'None'}...")
+        self.log_memory_usage("after translation completion")
         
         # Create or update translation
         translation, created = Translation.objects.get_or_create(
@@ -586,6 +675,10 @@ class TranslationService:
         
         print(f"Translation saved. Created: {created}, ID: {translation.id}")
         print(f"Final translation length: {len(translation.translated_content) if translation.translated_content else 0}")
+        
+        # Final memory cleanup
+        gc.collect()
+        self.log_memory_usage("after saving translation")
         
         return translation
 

@@ -45,6 +45,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'note_translate.middleware.MemoryMonitoringMiddleware',  # Memory monitoring
 ]
 
 ROOT_URLCONF = 'note_translate.urls'
