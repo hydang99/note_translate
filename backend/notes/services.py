@@ -498,18 +498,22 @@ class TranslationService:
             raise Exception("Note has no content to translate")
         
         print(f"Starting translation for note {note.id} - {note.title}")
+        print(f"Content type: {type(note.content)}")
+        print(f"Content length: {len(note.content) if note.content else 0}")
+        print(f"Content preview: {note.content[:500] if note.content else 'None'}...")
         self.log_memory_usage("before translation start")
         detected_language = None
         
         # Check if content is page-based JSON or plain text
         try:
             import json
+            print(f"🔍 Attempting to parse content as JSON...")
             print(f"Content type: {type(note.content)}")
             print(f"Content length: {len(note.content) if note.content else 0}")
             print(f"Content preview: {note.content[:500] if note.content else 'None'}")
             
             pages_data = json.loads(note.content)
-            print(f"Parsed JSON successfully, type: {type(pages_data)}")
+            print(f"✅ Parsed JSON successfully, type: {type(pages_data)}")
             print(f"JSON length: {len(pages_data) if isinstance(pages_data, list) else 'Not a list'}")
             
             if isinstance(pages_data, list) and len(pages_data) > 0 and 'page_number' in pages_data[0]:
@@ -602,7 +606,8 @@ class TranslationService:
                 detected_language = result['detected_language']
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             # Plain text content
-            print(f"JSON parsing failed: {e}")
+            print(f"❌ JSON parsing failed: {e}")
+            print(f"Error type: {type(e)}")
             print("Treating as plain text content")
             print(f"About to translate {len(note.content)} characters of plain text")
             

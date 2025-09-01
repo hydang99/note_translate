@@ -111,8 +111,16 @@ class NoteViewSet(viewsets.ModelViewSet):
                 )
         
         try:
+            print(f"Starting translation process...")
+            print(f"Note content type: {type(note.content)}")
+            print(f"Note content length: {len(note.content) if note.content else 0}")
+            print(f"Note content preview: {note.content[:200] if note.content else 'None'}...")
+            
             translation_service = TranslationService()
+            print(f"Translation service created successfully")
+            
             translation = translation_service.translate_note(note)
+            print(f"Translation completed successfully: {translation}")
             
             # Save the edited content to the database
             if edited_content:
@@ -124,6 +132,11 @@ class NoteViewSet(viewsets.ModelViewSet):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
             
         except Exception as e:
+            print(f"❌ Translation failed with error: {str(e)}")
+            print(f"Error type: {type(e)}")
+            import traceback
+            print(f"Full traceback: {traceback.format_exc()}")
+            
             # Restore original content if we temporarily changed it and there was an error
             if edited_content:
                 note.content = original_content
