@@ -37,11 +37,21 @@ export default function SideBySideViewer({
   const [highlightedWords, setHighlightedWords] = useState(new Set()); // Track highlighted words
   const [allSelectedWords, setAllSelectedWords] = useState([]); // Store all selected words with their definitions
   const [isScrolling, setIsScrolling] = useState(false);
+  const scrollTimeoutRef = useRef(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   
   const leftPaneRef = useRef(null);
   const rightPaneRef = useRef(null);
   const { currentUser } = useAuth();
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Helper functions for editing
   const getCleanTextForEditing = (content) => {
@@ -106,41 +116,74 @@ export default function SideBySideViewer({
     return cleanText.replace(/\n/g, '\\n');
   };
 
-  // Synchronized scrolling between left and right panes
+  // Improved synchronized scrolling with debouncing
   const handleLeftPaneScroll = (e) => {
     if (isScrolling) return;
+    
+    // Clear any existing timeout
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
     
     setIsScrolling(true);
     const leftPane = e.target;
     const rightPane = rightPaneRef.current;
     
-    if (rightPane) {
-      const scrollPercentage = leftPane.scrollTop / (leftPane.scrollHeight - leftPane.clientHeight);
-      rightPane.scrollTop = scrollPercentage * (rightPane.scrollHeight - rightPane.clientHeight);
+    if (rightPane && leftPane.scrollHeight > leftPane.clientHeight) {
+      // Use a more stable scrolling approach
+      const leftScrollRatio = leftPane.scrollTop / (leftPane.scrollHeight - leftPane.clientHeight);
+      const targetScrollTop = leftScrollRatio * (rightPane.scrollHeight - rightPane.clientHeight);
+      
+      // Only scroll if the difference is significant to avoid micro-adjustments
+      if (Math.abs(rightPane.scrollTop - targetScrollTop) > 5) {
+        rightPane.scrollTop = targetScrollTop;
+      }
     }
     
-    setTimeout(() => setIsScrolling(false), 50);
+    // Debounce the scrolling flag reset
+    scrollTimeoutRef.current = setTimeout(() => {
+      setIsScrolling(false);
+    }, 100);
   };
 
   const handleRightPaneScroll = (e) => {
     if (isScrolling) return;
     
+    // Clear any existing timeout
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    
     setIsScrolling(true);
     const rightPane = e.target;
     const leftPane = leftPaneRef.current;
     
-    if (leftPane) {
-      const scrollPercentage = rightPane.scrollTop / (rightPane.scrollHeight - rightPane.clientHeight);
-      leftPane.scrollTop = scrollPercentage * (leftPane.scrollHeight - leftPane.clientHeight);
+    if (leftPane && rightPane.scrollHeight > rightPane.clientHeight) {
+      // Use a more stable scrolling approach
+      const rightScrollRatio = rightPane.scrollTop / (rightPane.scrollHeight - rightPane.clientHeight);
+      const targetScrollTop = rightScrollRatio * (leftPane.scrollHeight - leftPane.clientHeight);
+      
+      // Only scroll if the difference is significant to avoid micro-adjustments
+      if (Math.abs(leftPane.scrollTop - targetScrollTop) > 5) {
+        leftPane.scrollTop = targetScrollTop;
+      }
     }
     
-    setTimeout(() => setIsScrolling(false), 50);
+    // Debounce the scrolling flag reset
+    scrollTimeoutRef.current = setTimeout(() => {
+      setIsScrolling(false);
+    }, 100);
   };
 
   // Handle click on highlighted word to sync scroll to corresponding position
   const handleWordClick = (word, event) => {
     event.preventDefault();
     event.stopPropagation();
+    
+    // Only sync scroll if user explicitly wants it (e.g., double-click or Ctrl+click)
+    if (!event.ctrlKey && !event.metaKey && event.detail !== 2) {
+      return;
+    }
     
     // Find the clicked element
     const clickedElement = event.target;
@@ -163,8 +206,14 @@ export default function SideBySideViewer({
     if (targetPane) {
       setIsScrolling(true);
       const targetScrollTop = scrollPercentage * (targetPane.scrollHeight - targetPane.clientHeight);
-      targetPane.scrollTop = targetScrollTop;
-      setTimeout(() => setIsScrolling(false), 50);
+      
+      // Smooth scroll to the target position
+      targetPane.scrollTo({
+        top: targetScrollTop,
+        behavior: 'smooth'
+      });
+      
+      setTimeout(() => setIsScrolling(false), 300);
       
       // Show a brief visual feedback
       clickedElement.style.backgroundColor = '#fef3c7';
@@ -743,9 +792,10 @@ All formatting will be preserved when you save."
           ) : (
             <div 
               ref={leftPaneRef}
-              className="text-pane-content markdown-content"
+              className="text-pane-content markdown-content overflow-y-auto scroll-smooth"
               onMouseUp={handleTextSelection}
               onScroll={handleLeftPaneScroll}
+              style={{ scrollBehavior: 'smooth' }}
             >
               <MarkdownWithHighlights 
                 content={currentOriginalPage} 
@@ -765,9 +815,10 @@ All formatting will be preserved when you save."
           </div>
                      <div 
              ref={rightPaneRef}
-             className="text-pane-content markdown-content"
+             className="text-pane-content markdown-content overflow-y-auto scroll-smooth"
              onMouseUp={handleTextSelection}
              onScroll={handleRightPaneScroll}
+             style={{ scrollBehavior: 'smooth' }}
            >
              <MarkdownWithHighlights 
                content={currentTranslatedPage} 
