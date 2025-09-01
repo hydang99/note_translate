@@ -31,6 +31,54 @@ export default function Home() {
     checkCurrentNote();
   }, []);
 
+  // Handle page refresh/unload - cancel any ongoing processing
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // Check if there's an ongoing upload or translation
+      if (isUploading || isTranslating) {
+        console.log('🔄 Page refresh detected, cancelling ongoing processing...');
+        
+        // Try to cancel any ongoing note processing
+        if (currentNote && currentNote.id) {
+          const data = JSON.stringify({ 
+            action: 'cancel_processing',
+            note_id: currentNote.id 
+          });
+          navigator.sendBeacon(
+            `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/'}notes/${currentNote.id}/cancel_processing/`,
+            data
+          );
+        }
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && (isUploading || isTranslating)) {
+        console.log('🔄 Page hidden, cancelling ongoing processing...');
+        
+        // Try to cancel any ongoing note processing
+        if (currentNote && currentNote.id) {
+          const data = JSON.stringify({ 
+            action: 'cancel_processing',
+            note_id: currentNote.id 
+          });
+          navigator.sendBeacon(
+            `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/'}notes/${currentNote.id}/cancel_processing/`,
+            data
+          );
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isUploading, isTranslating, currentNote]);
+
   const checkCurrentNote = () => {
     // Check if there's a current note stored in localStorage
     const storedNote = localStorage.getItem('currentNote');

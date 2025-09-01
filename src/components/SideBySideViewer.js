@@ -39,16 +39,10 @@ export default function SideBySideViewer({
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
-      const [syncScrolling, setSyncScrolling] = useState(false);
-    const [isSyncActive, setIsSyncActive] = useState(false);
-    
-    // Processing state variables
-    const [isProcessing, setIsProcessing] = useState(false);
-    const [processingProgress, setProcessingProgress] = useState(0);
-    const [processingStage, setProcessingStage] = useState('');
-    const [isCancelling, setIsCancelling] = useState(false);
-    
-    const leftPaneRef = useRef(null);
+  const [syncScrolling, setSyncScrolling] = useState(false);
+  const [isSyncActive, setIsSyncActive] = useState(false);
+  
+  const leftPaneRef = useRef(null);
   const rightPaneRef = useRef(null);
   const { currentUser } = useAuth();
 
@@ -882,46 +876,10 @@ export default function SideBySideViewer({
       }
     } finally {
       setIsSaving(false);
-          }
-    };
-    
-    // Cancel ongoing processing
-    const handleCancelProcessing = async () => {
-      if (!noteId) return;
-      
-      try {
-        setIsCancelling(true);
-        
-        // Cancel processing via backend API
-        const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/'}notes/${noteId}/cancel_processing/`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.status === 'cancelled') {
-            toast.success('Processing cancelled successfully');
-            // Reset processing state
-            setIsProcessing(false);
-            setProcessingProgress(0);
-            setProcessingStage('');
-          }
-        } else {
-          toast.error('Failed to cancel processing');
-        }
-        
-      } catch (error) {
-        console.error('Error cancelling processing:', error);
-        toast.error('Failed to cancel processing');
-      } finally {
-        setIsCancelling(false);
-      }
-    };
-    
-    const handlePageChange = (newPage) => {
+    }
+  };
+
+  const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= Math.max(originalPages.length, translatedPages.length)) {
       setCurrentPage(newPage);
       if (onPageChange) {
@@ -929,65 +887,42 @@ export default function SideBySideViewer({
       }
     }
   };
-  
-  // Start processing state for file operations
-  const startProcessing = (stage = 'Processing file...') => {
-    console.log(`🚀 Starting processing: ${stage}`);
-    setIsProcessing(true);
-    setProcessingProgress(0);
-    setProcessingStage(stage);
-  };
-  
-  // Update processing progress
-  const updateProcessingProgress = (progress, stage) => {
-    console.log(`📊 Processing progress: ${progress}% - ${stage}`);
-    setProcessingProgress(progress);
-    setProcessingStage(stage);
-  };
-  
-  // Complete processing
-  const completeProcessing = () => {
-    console.log('✅ Processing completed');
-    setIsProcessing(false);
-    setProcessingProgress(100);
-    setProcessingStage('Completed');
-    
-    // Reset after a delay
-    setTimeout(() => {
-      setProcessingProgress(0);
-      setProcessingStage('');
-    }, 2000);
-  };
 
-      const currentOriginalPage = originalPages[currentPage - 1] || '';
-    const currentTranslatedPage = translatedPages[currentPage - 1] || '';
-    
-      // Handle page refresh/unload - cancel any ongoing processing
+  const currentOriginalPage = originalPages[currentPage - 1] || '';
+  const currentTranslatedPage = translatedPages[currentPage - 1] || '';
+
+  // Handle page refresh/unload - cancel any ongoing processing
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if (isProcessing && noteId) {
+      if (noteId) {
         console.log('🔄 Page refresh detected, cancelling backend processing...');
         // Use navigator.sendBeacon for more reliable delivery during page unload
-        const data = JSON.stringify({ note_id: noteId });
+        const data = JSON.stringify({ 
+          action: 'cancel_processing',
+          note_id: noteId 
+        });
         navigator.sendBeacon(
           `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/'}notes/${noteId}/cancel_processing/`,
           data
         );
       }
     };
-    
+
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden' && isProcessing && noteId) {
+      if (document.visibilityState === 'hidden' && noteId) {
         console.log('🔄 Page hidden, cancelling backend processing...');
         // Page is being hidden (refresh, tab switch, etc.)
-        const data = JSON.stringify({ note_id: noteId });
+        const data = JSON.stringify({ 
+          action: 'cancel_processing',
+          note_id: noteId 
+        });
         navigator.sendBeacon(
           `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/'}notes/${noteId}/cancel_processing/`,
           data
         );
       }
     };
-    
+
     window.addEventListener('beforeunload', handleBeforeUnload);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
@@ -996,73 +931,50 @@ export default function SideBySideViewer({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       
       // Also cancel processing when component unmounts
-      if (isProcessing && noteId) {
+      if (noteId) {
         console.log('🔄 Component unmounting, cancelling backend processing...');
         handleCancelProcessing();
       }
     };
-  }, [noteId, isProcessing]);
+  }, [noteId]);
+
+  // Cancel ongoing processing
+  const handleCancelProcessing = async () => {
+    if (!noteId) return;
     
-        return (
-      <div className="space-y-4">
-        {/* Processing Progress Bar with Cancel Button */}
-        {isProcessing && (
-          <div className="bg-white p-4 rounded-lg shadow-sm border">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-gray-700">
-                {processingStage || 'Processing...'}
-              </h3>
-              <button
-                onClick={handleCancelProcessing}
-                disabled={isCancelling}
-                className="px-3 py-1 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isCancelling ? 'Cancelling...' : 'Cancel'}
-              </button>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${processingProgress}%` }}
-              ></div>
-            </div>
-            <div className="text-xs text-gray-500 mt-1">
-              {processingProgress}% complete
-            </div>
-          </div>
-        )}
+    try {
+      console.log('🔄 Cancelling backend processing...');
+      
+      // Cancel processing via backend API
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/'}notes/${noteId}/cancel_processing/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'cancel_processing',
+          note_id: noteId
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === 'cancelled') {
+          console.log('✅ Backend processing cancelled successfully');
+        }
+      } else {
+        console.log('⚠️ Failed to cancel backend processing');
+      }
+      
+    } catch (error) {
+      console.error('Error cancelling processing:', error);
+    }
+  };
 
-        {/* Test Processing Button (for demonstration) */}
-        <div className="bg-white p-4 rounded-lg shadow-sm border">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-gray-700">Processing Test</h3>
-            <div className="space-x-2">
-              <button
-                onClick={() => startProcessing('Testing file processing...')}
-                className="px-3 py-1 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100"
-              >
-                Start Processing
-              </button>
-              <button
-                onClick={() => updateProcessingProgress(50, 'Halfway done...')}
-                disabled={!isProcessing}
-                className="px-3 py-1 text-sm font-medium text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-md hover:bg-yellow-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Update Progress
-              </button>
-              <button
-                onClick={completeProcessing}
-                disabled={!isProcessing}
-                className="px-3 py-1 text-sm font-medium text-green-600 bg-green-50 border border-green-200 rounded-md hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Complete
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Page Navigation */}
-        <div className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm border">
+  return (
+    <div className="space-y-4">
+      {/* Page Navigation */}
+      <div className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm border">
         <button
           onClick={() => handlePageChange(currentPage - 1)}
           disabled={currentPage <= 1}
