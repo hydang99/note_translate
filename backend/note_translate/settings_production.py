@@ -67,6 +67,7 @@ if os.getenv('RAILWAY_ENVIRONMENT'):
 # CORS settings for production
 CORS_ALLOWED_ORIGINS = [
     "https://web-production-4646.up.railway.app",
+    "https://note-translate-grug7xbel-hy-dangs-projects-9554bf41.vercel.app",  # Current Vercel deployment
     "https://note-translate-meowj9nn8-hy-dangs-projects-9554bf41.vercel.app",  # Vercel frontend
     "https://note-translate-gpqbikl97-hy-dangs-projects-9554bf41.vercel.app",  # New Vercel deployment
     "https://note-translate-1q5s2uu1z-hy-dangs-projects-9554bf41.vercel.app",  # Latest Vercel deployment
