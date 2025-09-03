@@ -24,6 +24,8 @@ export default function NoteViewer() {
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [isEditingOriginal, setIsEditingOriginal] = useState(false);
   const [editedOriginalContent, setEditedOriginalContent] = useState('');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [autoSaving, setAutoSaving] = useState(false);
   const { currentUser } = useAuth();
 
   useEffect(() => {
@@ -34,6 +36,22 @@ export default function NoteViewer() {
           setNote(location.state.note);
           // Store current note in localStorage for easy return
           localStorage.setItem('currentNote', JSON.stringify(location.state.note));
+          
+          // Check for any pending edits in localStorage
+          const pendingEdits = localStorage.getItem(`pendingEdits_${location.state.note.id}`);
+          if (pendingEdits) {
+            try {
+              const edits = JSON.parse(pendingEdits);
+              setIsEditingOriginal(true);
+              setEditedOriginalContent(edits.content);
+              setHasUnsavedChanges(true);
+              toast.info('Restored unsaved changes from previous session');
+            } catch (error) {
+              console.error('Error parsing pending edits:', error);
+              localStorage.removeItem(`pendingEdits_${location.state.note.id}`);
+            }
+          }
+          
           setLoading(false);
           return;
         }
@@ -43,6 +61,21 @@ export default function NoteViewer() {
         setNote(response.data);
         // Store current note in localStorage for easy return
         localStorage.setItem('currentNote', JSON.stringify(response.data));
+        
+        // Check for any pending edits in localStorage
+        const pendingEdits = localStorage.getItem(`pendingEdits_${id}`);
+        if (pendingEdits) {
+          try {
+            const edits = JSON.parse(pendingEdits);
+            setIsEditingOriginal(true);
+            setEditedOriginalContent(edits.content);
+            setHasUnsavedChanges(true);
+            toast.info('Restored unsaved changes from previous session');
+          } catch (error) {
+            console.error('Error parsing pending edits:', error);
+            localStorage.removeItem(`pendingEdits_${id}`);
+          }
+        }
       } catch (error) {
         console.error('Error fetching note:', error);
         toast.error('Failed to load note');
@@ -54,6 +87,96 @@ export default function NoteViewer() {
 
     fetchNote();
   }, [id, navigate, location.state]);
+
+  // Auto-save functionality and page refresh handling
+  useEffect(() => {
+    if (!note) return;
+
+    // Auto-save edited content to localStorage whenever it changes
+    if (isEditingOriginal && editedOriginalContent && editedOriginalContent !== note.content) {
+      const edits = {
+        content: editedOriginalContent,
+        timestamp: Date.now()
+      };
+      localStorage.setItem(`pendingEdits_${note.id}`, JSON.stringify(edits));
+      setHasUnsavedChanges(true);
+    }
+  }, [note, isEditingOriginal, editedOriginalContent]);
+
+  // Handle page refresh/close with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = async (e) => {
+      if (hasUnsavedChanges && note) {
+        if (currentUser) {
+          // For logged-in users, try to auto-save
+          e.preventDefault();
+          
+          try {
+            setAutoSaving(true);
+            if (isEditingOriginal && editedOriginalContent) {
+              await notesAPI.update(note.id, {
+                content: editedOriginalContent.trim()
+              });
+              // Clear pending edits since we saved successfully
+              localStorage.removeItem(`pendingEdits_${note.id}`);
+            }
+          } catch (error) {
+            console.error('Auto-save on page unload failed:', error);
+            // Keep the warning dialog
+            e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+            return 'You have unsaved changes. Are you sure you want to leave?';
+          }
+        } else {
+          // For guest users, show warning but keep changes in localStorage
+          e.preventDefault();
+          e.returnValue = 'You have unsaved changes. Please log in to save them permanently, or they will be restored when you return to this page.';
+          return 'You have unsaved changes. Please log in to save them permanently, or they will be restored when you return to this page.';
+        }
+      }
+    };
+
+    // Add event listener for page refresh/close
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges, currentUser, note, isEditingOriginal, editedOriginalContent]);
+
+  // Auto-save timer for logged-in users
+  useEffect(() => {
+    if (!hasUnsavedChanges || !currentUser || !note || !isEditingOriginal) return;
+
+    const autoSaveTimer = setTimeout(async () => {
+      try {
+        setAutoSaving(true);
+        await notesAPI.update(note.id, {
+          content: editedOriginalContent.trim()
+        });
+        
+        // Clear pending edits and update state
+        localStorage.removeItem(`pendingEdits_${note.id}`);
+        setHasUnsavedChanges(false);
+        
+        const updatedNote = {
+          ...note,
+          content: editedOriginalContent.trim()
+        };
+        setNote(updatedNote);
+        localStorage.setItem('currentNote', JSON.stringify(updatedNote));
+        
+        toast.success('Changes auto-saved!', { duration: 2000 });
+      } catch (error) {
+        console.error('Auto-save failed:', error);
+        toast.error('Auto-save failed. Please save manually.');
+      } finally {
+        setAutoSaving(false);
+      }
+    }, 10000); // Auto-save after 10 seconds of inactivity
+
+    return () => clearTimeout(autoSaveTimer);
+  }, [hasUnsavedChanges, currentUser, note, isEditingOriginal, editedOriginalContent]);
 
   const handleTranslate = async () => {
     if (!note) return;
@@ -259,6 +382,9 @@ export default function NoteViewer() {
       // Update localStorage with the new note data
       localStorage.setItem('currentNote', JSON.stringify(updatedNote));
       
+      // Clear pending edits and unsaved changes
+      localStorage.removeItem(`pendingEdits_${note.id}`);
+      setHasUnsavedChanges(false);
       setIsEditingOriginal(false);
       toast.success('Original text updated successfully!');
     } catch (error) {
@@ -270,6 +396,11 @@ export default function NoteViewer() {
   };
 
   const handleCancelEdit = () => {
+    // Clear pending edits when canceling
+    if (note) {
+      localStorage.removeItem(`pendingEdits_${note.id}`);
+    }
+    setHasUnsavedChanges(false);
     setIsEditingOriginal(false);
     setEditedOriginalContent('');
   };
@@ -353,7 +484,21 @@ export default function NoteViewer() {
             <ArrowLeft className="h-4 w-4" />
             <span>Back to Notes</span>
           </button>
-          <h1 className="text-2xl font-bold text-gray-900">{note.title}</h1>
+          <div className="flex items-center space-x-2">
+            <h1 className="text-2xl font-bold text-gray-900">{note.title}</h1>
+            {hasUnsavedChanges && (
+              <div className="flex items-center space-x-1 text-sm text-orange-600">
+                <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></span>
+                <span>Unsaved changes</span>
+              </div>
+            )}
+            {autoSaving && (
+              <div className="flex items-center space-x-1 text-sm text-blue-600">
+                <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-600"></div>
+                <span>Auto-saving...</span>
+              </div>
+            )}
+          </div>
         </div>
         
         <div className="flex items-center space-x-2">
@@ -382,11 +527,20 @@ export default function NoteViewer() {
           </button>
           <button
             onClick={handleSaveNote}
-            disabled={saving}
-            className="flex items-center space-x-1 px-3 py-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md disabled:opacity-50"
+            disabled={saving || autoSaving}
+            className={`flex items-center space-x-1 px-3 py-2 rounded-md disabled:opacity-50 ${
+              hasUnsavedChanges 
+                ? 'text-orange-600 hover:text-orange-700 hover:bg-orange-50 bg-orange-50' 
+                : 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'
+            }`}
           >
             <Save className="h-4 w-4" />
-            <span>{saving ? 'Saving...' : 'Save Note'}</span>
+            <span>
+              {autoSaving ? 'Auto-saving...' : saving ? 'Saving...' : hasUnsavedChanges ? 'Save Changes' : 'Save Note'}
+            </span>
+            {hasUnsavedChanges && !autoSaving && !saving && (
+              <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
+            )}
           </button>
           <button
             onClick={handleRenameNote}
@@ -437,6 +591,32 @@ export default function NoteViewer() {
         </div>
       </div>
 
+      {/* Guest user info about auto-save */}
+      {hasUnsavedChanges && !currentUser && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+          <div className="flex items-start space-x-3">
+            <div className="flex-shrink-0">
+              <div className="w-5 h-5 bg-yellow-500 rounded-full flex items-center justify-center">
+                <span className="text-white text-xs font-bold">!</span>
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-yellow-800">Unsaved Changes</h3>
+              <p className="text-sm text-yellow-700 mt-1">
+                Your changes are temporarily saved in your browser. To save them permanently, please{' '}
+                <button
+                  onClick={() => setShowLoginPrompt(true)}
+                  className="underline hover:text-yellow-800 font-medium"
+                >
+                  log in
+                </button>
+                . Changes will be restored if you refresh this page.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       {note.translation ? (
         <SideBySideViewer
@@ -451,7 +631,13 @@ export default function NoteViewer() {
           showVocabulary={showVocabulary}
           isEditingOriginal={isEditingOriginal}
           editedOriginalContent={editedOriginalContent}
-          onEditedContentChange={setEditedOriginalContent}
+          onEditedContentChange={(content) => {
+            setEditedOriginalContent(content);
+            // Mark as having unsaved changes when content is edited
+            if (content !== note?.content) {
+              setHasUnsavedChanges(true);
+            }
+          }}
           onSaveEditedOriginal={handleSaveEditedOriginal}
           onCancelEdit={handleCancelEdit}
           onReTranslate={handleReTranslate}

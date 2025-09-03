@@ -72,6 +72,8 @@ export const notesAPI = {
   reExtractText: (id) => api.post(`/notes/${id}/re_extract_text/`),
   getRecent: () => api.get('/notes/recent/'),
   getProgress: (id) => api.get(`/notes/${id}/progress/`),
+  cancel: (id) => api.post(`/notes/${id}/cancel/`),
+  cleanupAbandoned: () => api.post('/notes/cleanup_abandoned/'),
 };
 
 // Vocabulary API

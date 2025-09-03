@@ -4,6 +4,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.shortcuts import get_object_or_404
 from django.db import models
+from django.db.models import functions
+from django.utils import timezone
 from .models import Note, Translation
 from .serializers import NoteSerializer, NoteCreateSerializer, TranslationSerializer
 from .services import NoteService, TranslationService
@@ -19,13 +21,16 @@ class NoteViewSet(viewsets.ModelViewSet):
         if hasattr(self.request, 'user') and self.request.user.is_authenticated:
             print(f"Notes queryset: User {self.request.user.username} authenticated, filtering by user")
             # Include both user's notes and guest notes (for transfer of ownership)
+            # Exclude abandoned notes unless they belong to the current user
             return Note.objects.filter(
                 models.Q(user=self.request.user) | models.Q(user__isnull=True)
+            ).exclude(
+                models.Q(status='abandoned') & models.Q(user__isnull=True)
             )
         else:
-            # For guest users, return notes that have no user (guest notes)
-            print("Notes queryset: No authenticated user, returning guest notes")
-            return Note.objects.filter(user__isnull=True)
+            # For guest users, return notes that have no user (guest notes) and are not abandoned
+            print("Notes queryset: No authenticated user, returning active guest notes")
+            return Note.objects.filter(user__isnull=True).exclude(status='abandoned')
     
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -35,10 +40,10 @@ class NoteViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Allow guest users to create temporary notes for trying the system
         if hasattr(self.request, 'user') and self.request.user.is_authenticated:
-            note = serializer.save(user=self.request.user)
+            note = serializer.save(user=self.request.user, status='draft')
         else:
             # Guest users can create notes but they won't be saved permanently
-            note = serializer.save(user=None)
+            note = serializer.save(user=None, status='draft')
         
         # Extract text from uploaded file if present
         if note.file:
@@ -46,9 +51,14 @@ class NoteViewSet(viewsets.ModelViewSet):
                 from .services import NoteService
                 note_service = NoteService()
                 note_service.process_uploaded_file(note)
+                # Update status to processing after content extraction
+                note.status = 'processing'
+                note.save()
             except Exception as e:
                 print(f"Error processing uploaded file: {e}")
-                # Don't fail the creation, just log the error
+                # Mark as abandoned if processing fails
+                note.status = 'abandoned'
+                note.save()
     
     def perform_update(self, serializer):
         # If the note has no user (guest note) and we have an authenticated user,
@@ -62,6 +72,23 @@ class NoteViewSet(viewsets.ModelViewSet):
                 serializer.save()
         else:
             serializer.save()
+    
+    def retrieve(self, request, *args, **kwargs):
+        """Override retrieve to mark note as active when viewed"""
+        response = super().retrieve(request, *args, **kwargs)
+        
+        # Mark note as active when user views it
+        try:
+            note = self.get_object()
+            if note.status in ['draft', 'processing']:
+                note.status = 'active'
+                note.last_accessed_at = timezone.now()
+                note.save(update_fields=['status', 'last_accessed_at'])
+                print(f"Marked note {note.id} as active")
+        except Exception as e:
+            print(f"Error updating note status: {e}")
+        
+        return response
     
     def create(self, request, *args, **kwargs):
         print(f"Create request data: {request.data}")
@@ -221,3 +248,46 @@ class NoteViewSet(viewsets.ModelViewSet):
         notes = self.get_queryset().order_by('-updated_at')[:10]
         serializer = self.get_serializer(notes, many=True)
         return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Cancel note processing and mark as abandoned"""
+        try:
+            note = self.get_object()
+            note.status = 'abandoned'
+            note.save(update_fields=['status'])
+            
+            return Response({
+                'status': 'success',
+                'message': 'Note cancelled and marked as abandoned'
+            })
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to cancel note: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=False, methods=['post'])
+    def cleanup_abandoned(self, request):
+        """Clean up abandoned notes older than specified time"""
+        try:
+            # Delete abandoned notes older than 1 hour
+            cutoff_time = timezone.now() - timezone.timedelta(hours=1)
+            
+            abandoned_notes = Note.objects.filter(
+                status='abandoned',
+                created_at__lt=cutoff_time
+            )
+            
+            count = abandoned_notes.count()
+            abandoned_notes.delete()
+            
+            return Response({
+                'status': 'success',
+                'message': f'Cleaned up {count} abandoned notes'
+            })
+        except Exception as e:
+            return Response(
+                {'error': f'Cleanup failed: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )

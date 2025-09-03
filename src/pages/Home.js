@@ -17,6 +17,7 @@ export default function Home() {
   const [targetLanguage, setTargetLanguage] = useState('vi');
   const [isUploading, setIsUploading] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
+  const [currentNoteId, setCurrentNoteId] = useState(null); // Track current note being processed
   const [uploadProgress, setUploadProgress] = useState({
     stage: '', // 'uploading', 'extracting', 'translating', 'complete'
     message: '',
@@ -61,6 +62,35 @@ export default function Home() {
     localStorage.removeItem('currentNote');
     setCurrentNote(null);
     toast.success('Current note cleared');
+  };
+
+  const handleCancelUpload = async () => {
+    if (!currentNoteId) return;
+
+    try {
+      await notesAPI.cancel(currentNoteId);
+      
+      // Reset all states
+      setIsUploading(false);
+      setIsTranslating(false);
+      setCurrentNoteId(null);
+      setUploadProgress({
+        stage: '',
+        message: '',
+        progress: 0,
+        currentPage: 0,
+        totalPages: 0
+      });
+      
+      // Clear file/text inputs
+      setSelectedFile(null);
+      setTextContent('');
+      
+      toast.success('Upload cancelled successfully');
+    } catch (error) {
+      console.error('Error cancelling upload:', error);
+      toast.error('Failed to cancel upload');
+    }
   };
 
   const handleFileSelect = (file) => {
@@ -140,6 +170,7 @@ export default function Home() {
 
       const response = await notesAPI.create(formData);
       const note = response.data;
+      setCurrentNoteId(note.id); // Store the note ID for potential cancellation
       
       // Get progress information from the backend
       try {
@@ -260,6 +291,16 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Upload error:', error);
+      
+      // If we have a note ID, mark it as abandoned
+      if (currentNoteId) {
+        try {
+          await notesAPI.cancel(currentNoteId);
+        } catch (cancelError) {
+          console.error('Error marking note as abandoned:', cancelError);
+        }
+      }
+      
       setUploadProgress({
         stage: 'error',
         message: 'Upload failed',
@@ -270,6 +311,7 @@ export default function Home() {
       toast.error('Failed to upload note');
     } finally {
       setIsUploading(false);
+      setCurrentNoteId(null); // Clear the note ID
       // Reset progress after a delay
       setTimeout(() => {
         setUploadProgress({
@@ -418,9 +460,19 @@ export default function Home() {
                     : `🚀 ${uploadProgress.message || (isUploading ? 'Uploading...' : 'Translating...')}`
                   }
                 </span>
-                <span className="text-sm text-gray-500">
-                  {uploadProgress.progress || 0}%
-                </span>
+                <div className="flex items-center space-x-3">
+                  <span className="text-sm text-gray-500">
+                    {uploadProgress.progress || 0}%
+                  </span>
+                  {currentNoteId && uploadProgress.stage !== 'complete' && (
+                    <button
+                      onClick={handleCancelUpload}
+                      className="text-sm text-red-600 hover:text-red-800 hover:bg-red-50 px-2 py-1 rounded transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div 
@@ -456,25 +508,45 @@ export default function Home() {
             </div>
           )}
 
-          <button
-            onClick={handleUpload}
-            disabled={isUploading || isTranslating || (!selectedFile && !textContent.trim())}
-            className="w-full bg-primary-600 text-white py-3 px-6 rounded-md hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
-          >
-            {isUploading ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                Uploading...
-              </>
-            ) : isTranslating ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                Translating...
-              </>
-            ) : (
-              'Upload & Translate'
+          <div className="space-y-3">
+            <button
+              onClick={handleUpload}
+              disabled={isUploading || isTranslating || (!selectedFile && !textContent.trim())}
+              className="w-full bg-primary-600 text-white py-3 px-6 rounded-md hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+            >
+              {isUploading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Uploading...
+                </>
+              ) : isTranslating ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Translating...
+                </>
+              ) : (
+                'Upload & Translate'
+              )}
+            </button>
+            
+            {(isUploading || isTranslating || selectedFile || textContent.trim()) && (
+              <button
+                onClick={() => {
+                  if (isUploading || isTranslating) {
+                    handleCancelUpload();
+                  } else {
+                    // Just clear inputs if not processing
+                    setSelectedFile(null);
+                    setTextContent('');
+                    toast.success('Cleared inputs for new session');
+                  }
+                }}
+                className="w-full bg-gray-600 text-white py-2 px-6 rounded-md hover:bg-gray-700 transition-colors flex items-center justify-center"
+              >
+                {isUploading || isTranslating ? 'Cancel Upload' : 'Start New Session'}
+              </button>
             )}
-          </button>
+          </div>
         </div>
       </div>
 
